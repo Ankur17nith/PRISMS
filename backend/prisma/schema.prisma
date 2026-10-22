@@ -1,0 +1,397 @@
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  DISABLED
+}
+
+enum RoleScope {
+  DEPARTMENT
+  INSTITUTE
+}
+
+enum ThesisStatus {
+  IN_PROGRESS
+  CLOSED
+}
+
+enum SubmissionStatus {
+  SUBMITTED
+  IN_REVIEW
+  REVISION_REQUIRED
+  APPROVED
+  REJECTED
+  WITHDRAWN
+}
+
+enum FileScanStatus {
+  PENDING
+  CLEAN
+  QUARANTINED
+  FAILED
+}
+
+enum WorkflowStageStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum AssignmentStatus {
+  ASSIGNED
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+}
+
+enum ReviewDecision {
+  APPROVE
+  REJECT
+}
+
+enum CommentType {
+  REVIEW_COMMENT
+}
+
+enum AuditOutcome {
+  SUCCESS
+  DENIED
+  FAILURE
+}
+
+model User {
+  id            String        @id @default(uuid()) @db.Uuid
+  collegeEmail  String        @unique @map("college_email")
+  passwordHash  String?       @map("password_hash")
+  fullName      String        @map("full_name")
+  phone         String?
+  accountStatus AccountStatus @default(PENDING) @map("account_status")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  deletedAt     DateTime?     @map("deleted_at")
+
+  studentProfile Student?
+  facultyProfile Faculty?
+  userRoles      UserRole[]
+
+  supervisorAssignmentsMade StudentSupervisorAssignment[] @relation("SupervisorAssignmentCreator")
+  submissionsMade           ThesisSubmission[]             @relation("SubmissionCreator")
+  filesUploaded             ThesisFile[]                   @relation("FileUploader")
+  reviewsAssigned           ReviewAssignment[]             @relation("ReviewAssignee")
+  reviewAssignmentsMade     ReviewAssignment[]             @relation("ReviewAssignmentCreator")
+  commentsAuthored          ReviewComment[]                @relation("CommentAuthor")
+  auditEvents               AuditEvent[]                   @relation("AuditActor")
+
+  @@map("users")
+}
+
+model Department {
+  id        String   @id @default(uuid()) @db.Uuid
+  code      String   @unique
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  students   Student[]
+  faculty    Faculty[]
+  userRoles  UserRole[]
+
+  @@map("departments")
+}
+
+model Student {
+  id                     String    @id @default(uuid()) @db.Uuid
+  userId                 String    @unique @db.Uuid @map("user_id")
+  rollNumber             String    @unique @map("roll_number")
+  departmentId           String    @db.Uuid @map("department_id")
+  program                String
+  enrollmentDate         DateTime  @db.Date @map("enrollment_date")
+  expectedCompletionDate DateTime? @db.Date @map("expected_completion_date")
+  admissionStatus        String    @map("admission_status")
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+
+  user                 User                         @relation(fields: [userId], references: [id])
+  department           Department                   @relation(fields: [departmentId], references: [id])
+  thesis               Thesis?
+  supervisorAssignments StudentSupervisorAssignment[]
+
+  @@index([departmentId])
+  @@map("students")
+}
+
+model Faculty {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @unique @db.Uuid @map("user_id")
+  employeeNumber String?  @unique @map("employee_number")
+  departmentId   String   @db.Uuid @map("department_id")
+  designation    String
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user                  User                         @relation(fields: [userId], references: [id])
+  department            Department                   @relation(fields: [departmentId], references: [id])
+  studentSupervisions   StudentSupervisorAssignment[]
+
+  @@index([departmentId])
+  @@map("faculty")
+}
+
+model Role {
+  id          String    @id @default(uuid()) @db.Uuid
+  code        String    @unique
+  name        String
+  description String?
+  scopeType   RoleScope @map("scope_type")
+  isActive    Boolean   @default(true) @map("is_active")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  userRoles        UserRole[]
+  reviewAssignments ReviewAssignment[]
+  workflowStageRoles WorkflowStageRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @db.Uuid @map("user_id")
+  roleId       String    @db.Uuid @map("role_id")
+  departmentId String?   @db.Uuid @map("department_id")
+  validFrom    DateTime  @default(now()) @map("valid_from")
+  validUntil   DateTime? @map("valid_until")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  user       User        @relation(fields: [userId], references: [id])
+  role       Role        @relation(fields: [roleId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  @@index([userId, validUntil])
+  @@index([roleId])
+  @@index([departmentId])
+  @@map("user_roles")
+}
+
+model StudentSupervisorAssignment {
+  id               String    @id @default(uuid()) @db.Uuid
+  studentId        String    @db.Uuid @map("student_id")
+  facultyId        String    @db.Uuid @map("faculty_id")
+  startDate        DateTime  @db.Date @map("start_date")
+  endDate          DateTime? @db.Date @map("end_date")
+  assignedByUserId String    @db.Uuid @map("assigned_by_user_id")
+  changeReason     String?   @map("change_reason")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  student    Student @relation(fields: [studentId], references: [id])
+  faculty    Faculty @relation(fields: [facultyId], references: [id])
+  assignedBy User    @relation("SupervisorAssignmentCreator", fields: [assignedByUserId], references: [id])
+
+  @@index([studentId, endDate])
+  @@index([facultyId, endDate])
+  @@map("student_supervisor_assignments")
+}
+
+model Thesis {
+  id           String       @id @default(uuid()) @db.Uuid
+  studentId    String       @unique @db.Uuid @map("student_id")
+  workingTitle String       @map("working_title")
+  abstract     String?
+  researchArea String?      @map("research_area")
+  status       ThesisStatus @default(IN_PROGRESS)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  student     Student             @relation(fields: [studentId], references: [id])
+  submissions ThesisSubmission[]
+
+  @@map("theses")
+}
+
+model ThesisSubmission {
+  id                String           @id @default(uuid()) @db.Uuid
+  thesisId          String           @db.Uuid @map("thesis_id")
+  submissionNumber  Int              @map("submission_number")
+  submittedByUserId String           @db.Uuid @map("submitted_by_user_id")
+  submittedAt       DateTime         @default(now()) @map("submitted_at")
+  status            SubmissionStatus @default(SUBMITTED)
+  overallDueAt      DateTime?        @map("overall_due_at")
+  closedAt          DateTime?        @map("closed_at")
+  closureReason     String?          @map("closure_reason")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  thesis      Thesis            @relation(fields: [thesisId], references: [id])
+  submittedBy User              @relation("SubmissionCreator", fields: [submittedByUserId], references: [id])
+  files       ThesisFile[]
+  stages      SubmissionStage[]
+  comments    ReviewComment[]
+
+  @@unique([thesisId, submissionNumber])
+  @@index([status])
+  @@index([submittedByUserId])
+  @@map("thesis_submissions")
+}
+
+model ThesisFile {
+  id               String        @id @default(uuid()) @db.Uuid
+  submissionId     String        @db.Uuid @map("submission_id")
+  uploadedByUserId String        @db.Uuid @map("uploaded_by_user_id")
+  originalFilename String        @map("original_filename")
+  storageKey       String        @unique @map("storage_key")
+  mimeType         String        @map("mime_type")
+  fileSizeBytes    BigInt        @map("file_size_bytes")
+  sha256Checksum   String?       @map("sha256_checksum")
+  scanStatus       FileScanStatus @default(PENDING) @map("scan_status")
+  uploadedAt       DateTime      @default(now()) @map("uploaded_at")
+  isPrimary        Boolean       @default(true) @map("is_primary")
+
+  submission ThesisSubmission @relation(fields: [submissionId], references: [id])
+  uploadedBy User             @relation("FileUploader", fields: [uploadedByUserId], references: [id])
+
+  @@index([submissionId])
+  @@index([uploadedByUserId])
+  @@map("thesis_files")
+}
+
+model WorkflowStageDefinition {
+  id               String   @id @default(uuid()) @db.Uuid
+  code             String   @unique
+  name             String
+  sequenceNumber   Int      @map("sequence_number")
+  departmentScoped Boolean  @default(false) @map("department_scoped")
+  isActive         Boolean  @default(true) @map("is_active")
+  configuration    Json?    @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  submissionStages SubmissionStage[]
+  requiredRoles    WorkflowStageRole[]
+
+  @@map("workflow_stage_definitions")
+}
+
+model WorkflowStageRole {
+  id                String   @id @default(uuid()) @db.Uuid
+  stageDefinitionId String   @db.Uuid @map("stage_definition_id")
+  roleId            String   @db.Uuid @map("role_id")
+  isRequired        Boolean  @default(true) @map("is_required")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  stageDefinition WorkflowStageDefinition @relation(fields: [stageDefinitionId], references: [id])
+  role            Role                    @relation(fields: [roleId], references: [id])
+
+  @@unique([stageDefinitionId, roleId])
+  @@index([roleId])
+  @@map("workflow_stage_roles")
+}
+
+model SubmissionStage {
+  id                String              @id @default(uuid()) @db.Uuid
+  submissionId      String              @db.Uuid @map("submission_id")
+  stageDefinitionId String              @db.Uuid @map("stage_definition_id")
+  status            WorkflowStageStatus @default(PENDING)
+  startedAt         DateTime?           @map("started_at")
+  completedAt       DateTime?           @map("completed_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+
+  submission ThesisSubmission       @relation(fields: [submissionId], references: [id])
+  definition WorkflowStageDefinition @relation(fields: [stageDefinitionId], references: [id])
+  assignments ReviewAssignment[]
+  comments    ReviewComment[]
+
+  @@unique([submissionId, stageDefinitionId])
+  @@index([status])
+  @@map("submission_stages")
+}
+
+model ReviewAssignment {
+  id                String           @id @default(uuid()) @db.Uuid
+  submissionStageId String           @db.Uuid @map("submission_stage_id")
+  reviewerUserId    String           @db.Uuid @map("reviewer_user_id")
+  reviewerRoleId    String?          @db.Uuid @map("reviewer_role_id")
+  assignedByUserId  String?          @db.Uuid @map("assigned_by_user_id")
+  assignmentStatus  AssignmentStatus @default(ASSIGNED) @map("assignment_status")
+  isRequired        Boolean          @default(true) @map("is_required")
+  assignedAt        DateTime         @default(now()) @map("assigned_at")
+  completedAt       DateTime?        @map("completed_at")
+  assignmentNote    String?          @map("assignment_note")
+
+  stage       SubmissionStage @relation(fields: [submissionStageId], references: [id])
+  reviewer    User            @relation("ReviewAssignee", fields: [reviewerUserId], references: [id])
+  reviewerRole Role?          @relation(fields: [reviewerRoleId], references: [id])
+  assignedBy  User?           @relation("ReviewAssignmentCreator", fields: [assignedByUserId], references: [id])
+  review      Review?
+  comments    ReviewComment[]
+
+  @@index([reviewerUserId, assignmentStatus])
+  @@index([reviewerRoleId])
+  @@index([submissionStageId])
+  @@map("review_assignments")
+}
+
+model Review {
+  id                 String         @id @default(uuid()) @db.Uuid
+  reviewAssignmentId String         @unique @db.Uuid @map("review_assignment_id")
+  decision           ReviewDecision
+  summary            String?
+  decidedAt          DateTime       @default(now()) @map("decided_at")
+  createdAt          DateTime       @default(now()) @map("created_at")
+
+  assignment ReviewAssignment @relation(fields: [reviewAssignmentId], references: [id])
+
+  @@map("reviews")
+}
+
+model ReviewComment {
+  id                 String      @id @default(uuid()) @db.Uuid
+  submissionId       String      @db.Uuid @map("submission_id")
+  stageId            String?     @db.Uuid @map("stage_id")
+  reviewAssignmentId String?     @db.Uuid @map("review_assignment_id")
+  authorUserId       String      @db.Uuid @map("author_user_id")
+  commentType        CommentType @default(REVIEW_COMMENT) @map("comment_type")
+  body               String
+  createdAt          DateTime    @default(now()) @map("created_at")
+  editedAt           DateTime?   @map("edited_at")
+
+  submission      ThesisSubmission @relation(fields: [submissionId], references: [id])
+  stage           SubmissionStage? @relation(fields: [stageId], references: [id])
+  reviewAssignment ReviewAssignment? @relation(fields: [reviewAssignmentId], references: [id])
+  author          User             @relation("CommentAuthor", fields: [authorUserId], references: [id])
+
+  @@index([submissionId, createdAt])
+  @@index([stageId])
+  @@index([reviewAssignmentId])
+  @@map("review_comments")
+}
+
+model AuditEvent {
+  id          String       @id @default(uuid()) @db.Uuid
+  actorUserId String?      @db.Uuid @map("actor_user_id")
+  eventType   String       @map("event_type")
+  entityType  String       @map("entity_type")
+  entityId    String?      @db.Uuid @map("entity_id")
+  outcome     AuditOutcome
+  reason      String?
+  ipAddress   String?      @map("ip_address")
+  userAgent   String?      @map("user_agent")
+  metadata    Json?        @db.JsonB
+  occurredAt  DateTime     @default(now()) @map("occurred_at")
+
+  actor User? @relation("AuditActor", fields: [actorUserId], references: [id])
+
+  @@index([actorUserId, occurredAt])
+  @@index([entityType, entityId])
+  @@index([eventType, occurredAt])
+  @@map("audit_events")
+}
