@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
   output   = "../src/generated/prisma"
@@ -86,12 +85,12 @@ model User {
   userRoles      UserRole[]
 
   supervisorAssignmentsMade StudentSupervisorAssignment[] @relation("SupervisorAssignmentCreator")
-  submissionsMade           ThesisSubmission[]             @relation("SubmissionCreator")
-  filesUploaded             ThesisFile[]                   @relation("FileUploader")
-  reviewsAssigned           ReviewAssignment[]             @relation("ReviewAssignee")
-  reviewAssignmentsMade     ReviewAssignment[]             @relation("ReviewAssignmentCreator")
-  commentsAuthored          ReviewComment[]                @relation("CommentAuthor")
-  auditEvents               AuditEvent[]                   @relation("AuditActor")
+  submissionsMade           ThesisSubmission[]            @relation("SubmissionCreator")
+  filesUploaded             ThesisFile[]                  @relation("FileUploader")
+  reviewsAssigned           ReviewAssignment[]            @relation("ReviewAssignee")
+  reviewAssignmentsMade     ReviewAssignment[]            @relation("ReviewAssignmentCreator")
+  commentsAuthored          ReviewComment[]               @relation("CommentAuthor")
+  auditEvents               AuditEvent[]                  @relation("AuditActor")
 
   @@map("users")
 }
@@ -103,28 +102,28 @@ model Department {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  students   Student[]
-  faculty    Faculty[]
-  userRoles  UserRole[]
+  students  Student[]
+  faculty   Faculty[]
+  userRoles UserRole[]
 
   @@map("departments")
 }
 
 model Student {
   id                     String    @id @default(uuid()) @db.Uuid
-  userId                 String    @unique @db.Uuid @map("user_id")
+  userId                 String    @unique @map("user_id") @db.Uuid
   rollNumber             String    @unique @map("roll_number")
-  departmentId           String    @db.Uuid @map("department_id")
+  departmentId           String    @map("department_id") @db.Uuid
   program                String
-  enrollmentDate         DateTime  @db.Date @map("enrollment_date")
-  expectedCompletionDate DateTime? @db.Date @map("expected_completion_date")
+  enrollmentDate         DateTime  @map("enrollment_date") @db.Date
+  expectedCompletionDate DateTime? @map("expected_completion_date") @db.Date
   admissionStatus        String    @map("admission_status")
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
 
-  user                 User                         @relation(fields: [userId], references: [id])
-  department           Department                   @relation(fields: [departmentId], references: [id])
-  thesis               Thesis?
+  user                  User                          @relation(fields: [userId], references: [id])
+  department            Department                    @relation(fields: [departmentId], references: [id])
+  thesis                Thesis?
   supervisorAssignments StudentSupervisorAssignment[]
 
   @@index([departmentId])
@@ -133,16 +132,16 @@ model Student {
 
 model Faculty {
   id             String   @id @default(uuid()) @db.Uuid
-  userId         String   @unique @db.Uuid @map("user_id")
+  userId         String   @unique @map("user_id") @db.Uuid
   employeeNumber String?  @unique @map("employee_number")
-  departmentId   String   @db.Uuid @map("department_id")
+  departmentId   String   @map("department_id") @db.Uuid
   designation    String
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  user                  User                         @relation(fields: [userId], references: [id])
-  department            Department                   @relation(fields: [departmentId], references: [id])
-  studentSupervisions   StudentSupervisorAssignment[]
+  user                User                          @relation(fields: [userId], references: [id])
+  department          Department                    @relation(fields: [departmentId], references: [id])
+  studentSupervisions StudentSupervisorAssignment[]
 
   @@index([departmentId])
   @@map("faculty")
@@ -157,8 +156,8 @@ model Role {
   isActive    Boolean   @default(true) @map("is_active")
   createdAt   DateTime  @default(now()) @map("created_at")
 
-  userRoles        UserRole[]
-  reviewAssignments ReviewAssignment[]
+  userRoles          UserRole[]
+  reviewAssignments  ReviewAssignment[]
   workflowStageRoles WorkflowStageRole[]
 
   @@map("roles")
@@ -166,9 +165,9 @@ model Role {
 
 model UserRole {
   id           String    @id @default(uuid()) @db.Uuid
-  userId       String    @db.Uuid @map("user_id")
-  roleId       String    @db.Uuid @map("role_id")
-  departmentId String?   @db.Uuid @map("department_id")
+  userId       String    @map("user_id") @db.Uuid
+  roleId       String    @map("role_id") @db.Uuid
+  departmentId String?   @map("department_id") @db.Uuid
   validFrom    DateTime  @default(now()) @map("valid_from")
   validUntil   DateTime? @map("valid_until")
   createdAt    DateTime  @default(now()) @map("created_at")
@@ -185,11 +184,11 @@ model UserRole {
 
 model StudentSupervisorAssignment {
   id               String    @id @default(uuid()) @db.Uuid
-  studentId        String    @db.Uuid @map("student_id")
-  facultyId        String    @db.Uuid @map("faculty_id")
-  startDate        DateTime  @db.Date @map("start_date")
-  endDate          DateTime? @db.Date @map("end_date")
-  assignedByUserId String    @db.Uuid @map("assigned_by_user_id")
+  studentId        String    @map("student_id") @db.Uuid
+  facultyId        String    @map("faculty_id") @db.Uuid
+  startDate        DateTime  @map("start_date") @db.Date
+  endDate          DateTime? @map("end_date") @db.Date
+  assignedByUserId String    @map("assigned_by_user_id") @db.Uuid
   changeReason     String?   @map("change_reason")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
@@ -205,7 +204,7 @@ model StudentSupervisorAssignment {
 
 model Thesis {
   id           String       @id @default(uuid()) @db.Uuid
-  studentId    String       @unique @db.Uuid @map("student_id")
+  studentId    String       @unique @map("student_id") @db.Uuid
   workingTitle String       @map("working_title")
   abstract     String?
   researchArea String?      @map("research_area")
@@ -213,7 +212,7 @@ model Thesis {
   createdAt    DateTime     @default(now()) @map("created_at")
   updatedAt    DateTime     @updatedAt @map("updated_at")
 
-  student     Student             @relation(fields: [studentId], references: [id])
+  student     Student            @relation(fields: [studentId], references: [id])
   submissions ThesisSubmission[]
 
   @@map("theses")
@@ -221,9 +220,9 @@ model Thesis {
 
 model ThesisSubmission {
   id                String           @id @default(uuid()) @db.Uuid
-  thesisId          String           @db.Uuid @map("thesis_id")
+  thesisId          String           @map("thesis_id") @db.Uuid
   submissionNumber  Int              @map("submission_number")
-  submittedByUserId String           @db.Uuid @map("submitted_by_user_id")
+  submittedByUserId String           @map("submitted_by_user_id") @db.Uuid
   submittedAt       DateTime         @default(now()) @map("submitted_at")
   status            SubmissionStatus @default(SUBMITTED)
   overallDueAt      DateTime?        @map("overall_due_at")
@@ -244,17 +243,17 @@ model ThesisSubmission {
 }
 
 model ThesisFile {
-  id               String        @id @default(uuid()) @db.Uuid
-  submissionId     String        @db.Uuid @map("submission_id")
-  uploadedByUserId String        @db.Uuid @map("uploaded_by_user_id")
-  originalFilename String        @map("original_filename")
-  storageKey       String        @unique @map("storage_key")
-  mimeType         String        @map("mime_type")
-  fileSizeBytes    BigInt        @map("file_size_bytes")
-  sha256Checksum   String?       @map("sha256_checksum")
+  id               String         @id @default(uuid()) @db.Uuid
+  submissionId     String         @map("submission_id") @db.Uuid
+  uploadedByUserId String         @map("uploaded_by_user_id") @db.Uuid
+  originalFilename String         @map("original_filename")
+  storageKey       String         @unique @map("storage_key")
+  mimeType         String         @map("mime_type")
+  fileSizeBytes    BigInt         @map("file_size_bytes")
+  sha256Checksum   String?        @map("sha256_checksum")
   scanStatus       FileScanStatus @default(PENDING) @map("scan_status")
-  uploadedAt       DateTime      @default(now()) @map("uploaded_at")
-  isPrimary        Boolean       @default(true) @map("is_primary")
+  uploadedAt       DateTime       @default(now()) @map("uploaded_at")
+  isPrimary        Boolean        @default(true) @map("is_primary")
 
   submission ThesisSubmission @relation(fields: [submissionId], references: [id])
   uploadedBy User             @relation("FileUploader", fields: [uploadedByUserId], references: [id])
@@ -283,8 +282,8 @@ model WorkflowStageDefinition {
 
 model WorkflowStageRole {
   id                String   @id @default(uuid()) @db.Uuid
-  stageDefinitionId String   @db.Uuid @map("stage_definition_id")
-  roleId            String   @db.Uuid @map("role_id")
+  stageDefinitionId String   @map("stage_definition_id") @db.Uuid
+  roleId            String   @map("role_id") @db.Uuid
   isRequired        Boolean  @default(true) @map("is_required")
   createdAt         DateTime @default(now()) @map("created_at")
 
@@ -298,15 +297,15 @@ model WorkflowStageRole {
 
 model SubmissionStage {
   id                String              @id @default(uuid()) @db.Uuid
-  submissionId      String              @db.Uuid @map("submission_id")
-  stageDefinitionId String              @db.Uuid @map("stage_definition_id")
+  submissionId      String              @map("submission_id") @db.Uuid
+  stageDefinitionId String              @map("stage_definition_id") @db.Uuid
   status            WorkflowStageStatus @default(PENDING)
   startedAt         DateTime?           @map("started_at")
   completedAt       DateTime?           @map("completed_at")
   createdAt         DateTime            @default(now()) @map("created_at")
 
-  submission ThesisSubmission       @relation(fields: [submissionId], references: [id])
-  definition WorkflowStageDefinition @relation(fields: [stageDefinitionId], references: [id])
+  submission  ThesisSubmission        @relation(fields: [submissionId], references: [id])
+  definition  WorkflowStageDefinition @relation(fields: [stageDefinitionId], references: [id])
   assignments ReviewAssignment[]
   comments    ReviewComment[]
 
@@ -317,22 +316,22 @@ model SubmissionStage {
 
 model ReviewAssignment {
   id                String           @id @default(uuid()) @db.Uuid
-  submissionStageId String           @db.Uuid @map("submission_stage_id")
-  reviewerUserId    String           @db.Uuid @map("reviewer_user_id")
-  reviewerRoleId    String?          @db.Uuid @map("reviewer_role_id")
-  assignedByUserId  String?          @db.Uuid @map("assigned_by_user_id")
+  submissionStageId String           @map("submission_stage_id") @db.Uuid
+  reviewerUserId    String           @map("reviewer_user_id") @db.Uuid
+  reviewerRoleId    String?          @map("reviewer_role_id") @db.Uuid
+  assignedByUserId  String?          @map("assigned_by_user_id") @db.Uuid
   assignmentStatus  AssignmentStatus @default(ASSIGNED) @map("assignment_status")
   isRequired        Boolean          @default(true) @map("is_required")
   assignedAt        DateTime         @default(now()) @map("assigned_at")
   completedAt       DateTime?        @map("completed_at")
   assignmentNote    String?          @map("assignment_note")
 
-  stage       SubmissionStage @relation(fields: [submissionStageId], references: [id])
-  reviewer    User            @relation("ReviewAssignee", fields: [reviewerUserId], references: [id])
-  reviewerRole Role?          @relation(fields: [reviewerRoleId], references: [id])
-  assignedBy  User?           @relation("ReviewAssignmentCreator", fields: [assignedByUserId], references: [id])
-  review      Review?
-  comments    ReviewComment[]
+  stage        SubmissionStage @relation(fields: [submissionStageId], references: [id])
+  reviewer     User            @relation("ReviewAssignee", fields: [reviewerUserId], references: [id])
+  reviewerRole Role?           @relation(fields: [reviewerRoleId], references: [id])
+  assignedBy   User?           @relation("ReviewAssignmentCreator", fields: [assignedByUserId], references: [id])
+  review       Review?
+  comments     ReviewComment[]
 
   @@index([reviewerUserId, assignmentStatus])
   @@index([reviewerRoleId])
@@ -342,7 +341,7 @@ model ReviewAssignment {
 
 model Review {
   id                 String         @id @default(uuid()) @db.Uuid
-  reviewAssignmentId String         @unique @db.Uuid @map("review_assignment_id")
+  reviewAssignmentId String         @unique @map("review_assignment_id") @db.Uuid
   decision           ReviewDecision
   summary            String?
   decidedAt          DateTime       @default(now()) @map("decided_at")
@@ -355,19 +354,19 @@ model Review {
 
 model ReviewComment {
   id                 String      @id @default(uuid()) @db.Uuid
-  submissionId       String      @db.Uuid @map("submission_id")
-  stageId            String?     @db.Uuid @map("stage_id")
-  reviewAssignmentId String?     @db.Uuid @map("review_assignment_id")
-  authorUserId       String      @db.Uuid @map("author_user_id")
+  submissionId       String      @map("submission_id") @db.Uuid
+  stageId            String?     @map("stage_id") @db.Uuid
+  reviewAssignmentId String?     @map("review_assignment_id") @db.Uuid
+  authorUserId       String      @map("author_user_id") @db.Uuid
   commentType        CommentType @default(REVIEW_COMMENT) @map("comment_type")
   body               String
   createdAt          DateTime    @default(now()) @map("created_at")
   editedAt           DateTime?   @map("edited_at")
 
-  submission      ThesisSubmission @relation(fields: [submissionId], references: [id])
-  stage           SubmissionStage? @relation(fields: [stageId], references: [id])
+  submission       ThesisSubmission  @relation(fields: [submissionId], references: [id])
+  stage            SubmissionStage?  @relation(fields: [stageId], references: [id])
   reviewAssignment ReviewAssignment? @relation(fields: [reviewAssignmentId], references: [id])
-  author          User             @relation("CommentAuthor", fields: [authorUserId], references: [id])
+  author           User              @relation("CommentAuthor", fields: [authorUserId], references: [id])
 
   @@index([submissionId, createdAt])
   @@index([stageId])
@@ -377,10 +376,10 @@ model ReviewComment {
 
 model AuditEvent {
   id          String       @id @default(uuid()) @db.Uuid
-  actorUserId String?      @db.Uuid @map("actor_user_id")
+  actorUserId String?      @map("actor_user_id") @db.Uuid
   eventType   String       @map("event_type")
   entityType  String       @map("entity_type")
-  entityId    String?      @db.Uuid @map("entity_id")
+  entityId    String?      @map("entity_id") @db.Uuid
   outcome     AuditOutcome
   reason      String?
   ipAddress   String?      @map("ip_address")
