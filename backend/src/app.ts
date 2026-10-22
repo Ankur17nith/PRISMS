@@ -2,13 +2,18 @@ import { prisma } from "./lib/prisma.js";
 import express, { type Express, type Request, type Response } from 'express';
 import helmet from "helmet";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+import { env } from "./config/env.js";
+import authRoutes from "./modules/auth/auth.routes.js";
+import { errorHandler, notFound } from "./middleware/errorHandler.js";
 
 const app: Express = express();
 
 app.disable("x-powered-by");
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({ origin: env.FRONTEND_URL, credentials: true }));
+app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/", (req: Request, res: Response) => {
@@ -37,5 +42,10 @@ app.get("/health/db", async (_req: Request, res: Response) => {
   }
 });
 
+
+app.use("/auth", authRoutes);
+
+app.use(notFound);
+app.use(errorHandler);
 
 export default app;
