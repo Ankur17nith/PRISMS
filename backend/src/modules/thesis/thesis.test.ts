@@ -378,6 +378,24 @@ describe("PRISMS Thesis Workflow & Security Integration Suite", () => {
       assert.ok(res.headers["content-disposition"].startsWith("attachment"));
     });
 
+    it("should prevent unauthorized/unassigned faculty from viewing thesis document inline", async () => {
+      const res = await request(app)
+        .get(`/theses/${submissionId}/file/view`)
+        .set("Authorization", `Bearer ${supervisor2Token}`);
+
+      assert.equal(res.status, 403);
+      assert.equal(res.body.error.code, "FORBIDDEN");
+    });
+
+    it("should return 404 with safe error when requesting non-existent fileId", async () => {
+      const res = await request(app)
+        .get(`/theses/${submissionId}/file/view?fileId=00000000-0000-0000-0000-000000000000`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 404);
+      assert.equal(res.body.error.code, "FILE_NOT_FOUND");
+    });
+
     it("should provide HOD with eligible SDPC and Dean Academics recipients for parallel/single routing", async () => {
       const res = await request(app)
         .get(`/theses/${submissionId}/recipients`)
@@ -710,6 +728,15 @@ describe("PRISMS Thesis Workflow & Security Integration Suite", () => {
       // Therefore, in the context of this thesis, they cannot download.
       const res = await request(app)
         .get(`/theses/${submissionId}/file/download`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 403);
+      assert.equal(res.body.error.code, "DOWNLOAD_FORBIDDEN_FOR_ROLE");
+    });
+
+    it("should deny download when user attempts to pass role=HOD query param", async () => {
+      const res = await request(app)
+        .get(`/theses/${submissionId}/file/download?role=HOD`)
         .set("Authorization", `Bearer ${hodToken}`);
 
       assert.equal(res.status, 403);
