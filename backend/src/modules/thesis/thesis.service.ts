@@ -1661,13 +1661,115 @@ export async function rejectSubmission(
 // Supervisor: Scholar Tracking API
 // -----------------------------------------------------------------------------
 
-export async function getSupervisorScholars(userId: string, query: ScholarQuery) {
-  const faculty = await prisma.faculty.findUnique({ where: { userId } });
+export async function getSupervisorScholars(
+  userId: string,
+  query: ScholarQuery,
+  actingRole?: string,
+) {
+  const faculty = await prisma.faculty.findUnique({
+    where: { userId },
+    include: { department: true },
+  });
   if (!faculty) {
     throw new AppError(403, "You do not have a registered faculty profile", "NOT_FACULTY");
   }
 
+  const isHod = normalizeRoleCode(actingRole || "") === ROLES.HOD;
   const now = new Date();
+
+  if (isHod) {
+    const studentWhere: any = { departmentId: faculty.departmentId };
+    if (query.status === "current") {
+      studentWhere.admissionStatus = { in: ["CONFIRMED", "ACTIVE", "Active"] };
+    } else if (query.status === "completed") {
+      studentWhere.admissionStatus = "COMPLETED";
+    }
+
+    if (query.search) {
+      studentWhere.OR = [
+        { rollNumber: { contains: query.search, mode: "insensitive" } },
+        { user: { fullName: { contains: query.search, mode: "insensitive" } } },
+      ];
+    }
+
+    const total = await prisma.student.count({ where: studentWhere });
+    const students = await prisma.student.findMany({
+      where: studentWhere,
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
+      orderBy: { rollNumber: "asc" },
+      include: {
+        user: { select: { fullName: true, collegeEmail: true } },
+        department: { select: { code: true, name: true } },
+        thesis: {
+          include: {
+            submissions: {
+              orderBy: { submissionNumber: "desc" },
+              take: 1,
+              include: {
+                stages: {
+                  where: { status: "PENDING" },
+                  include: { definition: true },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+        supervisorAssignments: {
+          where: {
+            startDate: { lte: now },
+            OR: [{ endDate: null }, { endDate: { gt: now } }],
+          },
+          include: { faculty: { include: { user: { select: { fullName: true } } } } },
+          take: 1,
+        },
+      },
+    });
+
+    const scholars = students.map((s) => {
+      const latestSub = s.thesis?.submissions[0];
+      const currentPendingStage = latestSub?.stages[0];
+      const supervisorName = s.supervisorAssignments[0]?.faculty.user.fullName ?? "Unassigned";
+
+      return {
+        scholarId: s.id,
+        studentId: s.id,
+        rollNumber: s.rollNumber,
+        fullName: s.user.fullName,
+        email: s.user.collegeEmail,
+        collegeEmail: s.user.collegeEmail,
+        program: s.program,
+        admissionStatus: s.admissionStatus,
+        departmentCode: s.department.code,
+        departmentName: s.department.name,
+        supervisionStatus: "CURRENT",
+        supervisorName,
+        activeSubmission: latestSub
+          ? {
+              id: latestSub.id,
+              submissionReference: `TH-2026-${String(latestSub.submissionNumber).padStart(3, "0")}`,
+              title: s.thesis?.workingTitle ?? "Doctoral Thesis",
+              status: latestSub.status,
+              currentVersion: latestSub.submissionNumber,
+              submittedAt: latestSub.submittedAt ? latestSub.submittedAt.toISOString() : null,
+              currentStage: currentPendingStage?.definition.name ?? null,
+            }
+          : null,
+      };
+    });
+
+    return {
+      scholars,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  }
+
   const whereClause: any = { facultyId: faculty.id };
 
   if (query.status === "current") {
@@ -1773,13 +1875,22 @@ export async function getSupervisorScholars(userId: string, query: ScholarQuery)
   };
 }
 
-export async function getSupervisorScholarHistory(supervisorUserId: string, studentId: string) {
-  const faculty = await prisma.faculty.findUnique({ where: { userId: supervisorUserId } });
+export async function getSupervisorScholarHistory(
+  supervisorUserId: string,
+  studentId: string,
+  actingRole?: string,
+) {
+  const faculty = await prisma.faculty.findUnique({
+    where: { userId: supervisorUserId },
+    include: { department: true },
+  });
   if (!faculty) {
     throw new AppError(403, "You do not have a registered faculty profile", "NOT_FACULTY");
   }
 
-  // Verify that this faculty supervises (or supervised) this scholar
+  const isHod = normalizeRoleCode(actingRole || "") === ROLES.HOD;
+
+  // Verify that this faculty supervises (or supervised) this scholar OR is HOD of the department
   const assignment = await prisma.studentSupervisorAssignment.findFirst({
     where: { facultyId: faculty.id, studentId },
     include: {
@@ -1792,8 +1903,22 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
     },
   });
 
-  if (!assignment) {
+  const student = assignment
+    ? assignment.student
+    : await prisma.student.findUnique({
+        where: { id: studentId },
+        include: {
+          user: { select: { id: true, fullName: true, collegeEmail: true } },
+          department: { select: { code: true, name: true } },
+        },
+      });
+
+  if (!assignment && (!isHod || student?.departmentId !== faculty.departmentId)) {
     throw new AppError(403, "You are not authorized to view this scholar's supervision history", "FORBIDDEN");
+  }
+
+  if (!student) {
+    throw new AppError(404, "Scholar record not found", "SCHOLAR_NOT_FOUND");
   }
 
   const thesis = await prisma.thesis.findUnique({
@@ -1871,21 +1996,21 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
 
   return {
     scholar: {
-      studentId: assignment.studentId,
-      scholarId: assignment.studentId,
-      rollNumber: assignment.student.rollNumber,
-      fullName: assignment.student.user.fullName,
-      email: assignment.student.user.collegeEmail,
-      collegeEmail: assignment.student.user.collegeEmail,
+      studentId: student.id,
+      scholarId: student.id,
+      rollNumber: student.rollNumber,
+      fullName: student.user.fullName,
+      email: student.user.collegeEmail,
+      collegeEmail: student.user.collegeEmail,
       user: {
-        id: assignment.student.user.id,
-        fullName: assignment.student.user.fullName,
-        collegeEmail: assignment.student.user.collegeEmail,
+        id: student.user.id,
+        fullName: student.user.fullName,
+        collegeEmail: student.user.collegeEmail,
       },
-      program: assignment.student.program,
-      department: assignment.student.department,
-      supervisionStartDate: assignment.startDate,
-      supervisionEndDate: assignment.endDate,
+      program: student.program,
+      department: student.department,
+      supervisionStartDate: assignment?.startDate ?? null,
+      supervisionEndDate: assignment?.endDate ?? null,
     },
     thesis: thesis
       ? {

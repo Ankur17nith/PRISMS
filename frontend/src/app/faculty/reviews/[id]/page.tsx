@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { useAuth } from "@/lib/auth";
 import { api, SubmissionItem } from "@/lib/api";
-import { formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
+import { formatDateTime, formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
 import { ThesisBookReader } from "@/components/ThesisBookReader";
 
 export default function FacultyReviewWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
@@ -56,13 +56,13 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
         const hasPendingAssignment = pendingStage?.assignments?.some((a: any) => {
           const rId = a.reviewerId || a.reviewerUserId || a.reviewer?.id;
           const isUser = rId === user?.id;
-          const isPending = a.status === "ASSIGNED" || a.status === "ACCEPTED";
+          const isPending = a.status === "ASSIGNED" || a.status === "ACCEPTED" || a.status === "PENDING";
           return isUser && isPending;
         });
 
         const canAct = Boolean(
-          (sub.status === "SUBMITTED" || sub.status === "IN_REVIEW") &&
-          hasPendingAssignment &&
+          (sub.status === "SUBMITTED" || sub.status === "IN_REVIEW" || sub.status === "UNDER_REVIEW") &&
+          (hasPendingAssignment || recipientsData.isActionable) &&
           recipientsData.isActionable !== false
         );
         setIsActionable(canAct);
@@ -255,16 +255,35 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
             )}
 
             {/* Version History info panel */}
-            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm">
-              <h3 className="font-bold text-[14.5px] text-[#171717] mb-2">Version History & Retained Records</h3>
-              <p className="text-[12.5px] text-[#666] mb-3">
-                All previous versions are permanently preserved. Current canonical version: v{submission?.currentVersion}.
+            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-3">
+              <h3 className="font-bold text-[14.5px] text-[#171717] border-b border-[#f2f2f0] pb-2">
+                Version History & Retained Records
+              </h3>
+              <p className="text-[12.5px] text-[#666]">
+                All historical thesis versions are retained indefinitely in the institutional repository.
               </p>
               <div className="divide-y divide-[#f2f2f0] text-[12.5px]">
-                <div className="py-2 flex justify-between">
-                  <span className="font-bold text-[#171717]">Version {submission?.currentVersion} (Current)</span>
+                <div className="py-2 flex justify-between items-center">
+                  <div>
+                    <span className="font-bold text-[#171717]">Version {submission?.currentVersion} (Current)</span>
+                    <p className="text-[11px] text-[#666]">
+                      Submitted: {submission?.submittedAt ? formatDateTime(submission.submittedAt) : "N/A"}
+                    </p>
+                  </div>
                   <span className="text-[#166534] font-semibold">{submission?.status}</span>
                 </div>
+                {latestFile && (
+                  <div className="py-2 text-[11.5px] text-[#666] space-y-1">
+                    <p>
+                      <strong className="text-[#171717]">File:</strong> {latestFile.originalFileName} ({(latestFile.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB)
+                    </p>
+                    {latestFile.sha256Checksum && (
+                      <p className="font-mono text-[10.5px] truncate text-[#888]">
+                        <strong className="text-[#171717]">SHA-256:</strong> {latestFile.sha256Checksum}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -359,19 +378,42 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
                 <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-[6px] p-4 text-[12.5px] text-[#0369a1] space-y-2">
                   <div className="flex items-center gap-2 font-bold text-[#0c4a6e]">
                     <span>📋</span>
-                    <span>Current Stage: {currentPendingStage?.stageName || currentPendingStage?.definition?.name || currentPendingStage?.stageCode || (submission?.status === "APPROVED" ? "Approved" : "Under Evaluation")}</span>
+                    <span>
+                      Current Stage:{" "}
+                      {currentPendingStage?.stageName ||
+                        currentPendingStage?.stageDefinition?.name ||
+                        currentPendingStage?.definition?.name ||
+                        currentPendingStage?.stageCode ||
+                        (submission?.status === "APPROVED" ? "Approved" : "Under Evaluation")}
+                    </span>
                   </div>
                   <p className="leading-relaxed text-[#0284c7]">
                     {submission?.status === "APPROVED"
                       ? "This dissertation submission has completed all institutional review stages and received final Senate approval."
                       : submission?.status === "REJECTED"
                       ? "This dissertation submission was formally rejected in institutional review."
-                      : "Your evaluation has been completed and forwarded. This submission is currently undergoing evaluation by subsequent authorities."}
+                      : (submission?.stages || []).some(
+                          (s: any) =>
+                            s.status === "COMPLETED" &&
+                            s.assignments?.some(
+                              (a: any) => (a.reviewerId || a.reviewerUserId || a.reviewer?.id) === user?.id
+                            )
+                        )
+                      ? `Your evaluation has been completed and forwarded. This submission is currently undergoing evaluation at stage: ${
+                          currentPendingStage?.stageName || currentPendingStage?.stageDefinition?.name || "Next Authority"
+                        }.`
+                      : `This submission is currently awaiting evaluation at stage: ${
+                          currentPendingStage?.stageName || currentPendingStage?.stageDefinition?.name || "Academic Review"
+                        }. You are viewing this record in institutional tracking mode.`}
                   </p>
                   {currentPendingStage?.assignments && currentPendingStage.assignments.length > 0 && (
                     <div className="pt-2 border-t border-[#bae6fd]/60 text-[11.5px]">
                       <span className="font-bold text-[#0c4a6e]">Designated Reviewer: </span>
-                      <span>{currentPendingStage.assignments.map((a: any) => a.reviewerName || a.reviewer?.fullName || a.reviewerRole).join(", ")}</span>
+                      <span>
+                        {currentPendingStage.assignments
+                          .map((a: any) => a.reviewerName || a.reviewer?.fullName || a.reviewerRole)
+                          .join(", ")}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -388,6 +430,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
                             {dec.decision}
                           </span>
                         </div>
+                        <p className="text-[10.5px] text-[#888]">{formatDateTime(dec.createdAt)}</p>
                         {dec.remarks && <p className="text-[#666] text-[11.5px] mt-1 italic">"{dec.remarks}"</p>}
                       </div>
                     ))}

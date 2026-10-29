@@ -17,7 +17,7 @@ export default function FacultyDashboardPage() {
       try {
         const [q, s] = await Promise.all([
           api.getReviewQueue(activeRole || undefined).catch(() => []),
-          api.getMyScholars().catch(() => []),
+          api.getMyScholars(activeRole || undefined).catch(() => []),
         ]);
         setQueue(Array.isArray(q) ? q : []);
         setScholars(Array.isArray(s) ? s : []);

@@ -3,11 +3,13 @@
 import React, { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { ApplicationShell } from "@/components/ApplicationShell";
+import { useAuth } from "@/lib/auth";
 import { api, SubmissionItem } from "@/lib/api";
-import { formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
+import { formatDateTime, formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
 
 export default function ScholarHistoryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { activeRole } = useAuth();
   const [data, setData] = useState<{ scholar: unknown; submissions: SubmissionItem[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
         return;
       }
       try {
-        const res = await api.getScholarHistory(id);
+        const res = await api.getScholarHistory(id, activeRole || undefined);
         setData(res);
       } catch (err: unknown) {
         if (err instanceof Error) setError(err.message);
@@ -29,7 +31,7 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
       }
     }
     load();
-  }, [id]);
+  }, [id, activeRole]);
 
   if (loading) {
     return (
@@ -131,15 +133,9 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[12px] text-[#666]">
                     <div>
-                      <span>Submitted Date: </span>
+                      <span>Submitted Date (IST): </span>
                       <span className="font-semibold text-[#171717]">
-                        {sub.submittedAt
-                          ? new Date(sub.submittedAt).toLocaleDateString("en-IN", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })
-                          : "Draft"}
+                        {sub.submittedAt ? formatDateTime(sub.submittedAt) : "Draft"}
                       </span>
                     </div>
                     <div>

@@ -7,6 +7,7 @@ import { ApplicationShell } from "@/components/ApplicationShell";
 import { ThesisBookReader } from "@/components/ThesisBookReader";
 import { useAuth } from "@/lib/auth";
 import { api, SubmissionItem } from "@/lib/api";
+import { formatDateTime } from "@/lib/statusHelper";
 
 export default function FacultyHodReviewWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -57,17 +58,18 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
         const hasPendingAssignment = pendingStage?.assignments?.some((a: any) => {
           const rId = a.reviewerId || a.reviewerUserId || a.reviewer?.id;
           const isUser = rId === user?.id;
-          const isPending = a.status === "ASSIGNED" || a.status === "ACCEPTED";
+          const isPending = a.status === "ASSIGNED" || a.status === "ACCEPTED" || a.status === "PENDING";
           return isUser && isPending;
         });
 
         const isHodStage =
           pendingStage?.stageCode === "HOD_REVIEW" ||
-          pendingStage?.definition?.code === "HOD_REVIEW";
+          pendingStage?.definition?.code === "HOD_REVIEW" ||
+          pendingStage?.stageDefinition?.code === "HOD_REVIEW";
 
         const canAct = Boolean(
-          (sub.status === "SUBMITTED" || sub.status === "IN_REVIEW") &&
-          hasPendingAssignment &&
+          (sub.status === "SUBMITTED" || sub.status === "IN_REVIEW" || sub.status === "UNDER_REVIEW") &&
+          (hasPendingAssignment || recipientsData.isActionable) &&
           isHodStage &&
           recipientsData.isActionable !== false
         );
@@ -272,11 +274,31 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
             </div>
 
             {/* Preserved Versions List */}
-            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-2">
-              <h3 className="font-bold text-[14.5px] text-[#171717]">Version History · Preserved Records</h3>
-              <p className="text-[12.5px] text-[#666]">
-                v{submission?.currentVersion} · Current · {latestFile?.originalFileName || "thesis.pdf"} · Preserved
-              </p>
+            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-3">
+              <h3 className="font-bold text-[14.5px] text-[#171717] border-b border-[#f2f2f0] pb-2">
+                Version History · Preserved Records
+              </h3>
+              <div className="space-y-2 text-[12.5px]">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-[#171717]">Version {submission?.currentVersion} (Current)</span>
+                  <span className="text-[#166534] font-semibold">{submission?.status}</span>
+                </div>
+                <p className="text-[11.5px] text-[#666]">
+                  Submitted: {submission?.submittedAt ? formatDateTime(submission.submittedAt) : "N/A"}
+                </p>
+                {latestFile && (
+                  <div className="text-[11.5px] text-[#666] space-y-0.5 pt-1">
+                    <p>
+                      <strong className="text-[#171717]">Document:</strong> {latestFile.originalFileName} ({(latestFile.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB)
+                    </p>
+                    {latestFile.sha256Checksum && (
+                      <p className="font-mono text-[10.5px] truncate text-[#888]">
+                        <strong className="text-[#171717]">SHA-256:</strong> {latestFile.sha256Checksum}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -373,24 +395,48 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
                 <div className="border-b border-[#f2f2f0] pb-2">
                   <h3 className="font-bold text-[16px] text-[#171717]">Workflow Status & Authority Tracking</h3>
                   <p className="text-[12px] text-[#666]">
-                    HOD review stage is complete. Record is in institutional tracking mode.
+                    Submission record is displayed in institutional tracking mode.
                   </p>
                 </div>
 
                 <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-[6px] p-4 text-[12.5px] text-[#0369a1] space-y-2">
                   <div className="flex items-center gap-2 font-bold text-[#0c4a6e]">
                     <span>📋</span>
-                    <span>Current Stage: {currentPendingStage?.stageName || currentPendingStage?.definition?.name || (submission?.status === "APPROVED" ? "Approved" : "Under Evaluation")}</span>
+                    <span>
+                      Current Stage:{" "}
+                      {currentPendingStage?.stageName ||
+                        currentPendingStage?.stageDefinition?.name ||
+                        currentPendingStage?.definition?.name ||
+                        (submission?.status === "APPROVED" ? "Approved" : "Under Evaluation")}
+                    </span>
                   </div>
                   <p className="leading-relaxed text-[#0284c7]">
                     {submission?.status === "APPROVED"
                       ? "This thesis submission has completed institutional review and received final Senate approval."
-                      : "Departmental evaluation has been forwarded. The submission is currently undergoing institute-level evaluation."}
+                      : submission?.status === "REJECTED"
+                      ? "This thesis submission was formally rejected in institutional review."
+                      : currentPendingStage?.stageCode === "SUPERVISOR_REVIEW" ||
+                        currentPendingStage?.definition?.code === "SUPERVISOR_REVIEW" ||
+                        currentPendingStage?.stageDefinition?.code === "SUPERVISOR_REVIEW"
+                      ? "This submission is currently awaiting evaluation by the Thesis Supervisor. Once forwarded by the supervisor, it will arrive in the HOD departmental approval queue."
+                      : (submission?.stages || []).some(
+                          (s: any) =>
+                            s.status === "COMPLETED" &&
+                            (s.stageCode === "HOD_REVIEW" || s.stageDefinition?.code === "HOD_REVIEW")
+                        )
+                      ? "Departmental evaluation has been forwarded. The submission is currently undergoing institute-level evaluation."
+                      : `This submission is currently undergoing evaluation at stage: ${
+                          currentPendingStage?.stageName || currentPendingStage?.stageDefinition?.name || "Academic Review"
+                        }. Record is in institutional tracking mode.`}
                   </p>
                   {currentPendingStage?.assignments && currentPendingStage.assignments.length > 0 && (
                     <div className="pt-2 border-t border-[#bae6fd]/60 text-[11.5px]">
                       <span className="font-bold text-[#0c4a6e]">Designated Authority: </span>
-                      <span>{currentPendingStage.assignments.map((a: any) => a.reviewerName || a.reviewer?.fullName || a.reviewerRole).join(", ")}</span>
+                      <span>
+                        {currentPendingStage.assignments
+                          .map((a: any) => a.reviewerName || a.reviewer?.fullName || a.reviewerRole)
+                          .join(", ")}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -406,6 +452,7 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
                             {dec.decision}
                           </span>
                         </div>
+                        <p className="text-[10.5px] text-[#888]">{formatDateTime(dec.createdAt)}</p>
                         {dec.remarks && <p className="text-[#666] text-[11.5px] mt-1 italic">"{dec.remarks}"</p>}
                       </div>
                     ))}

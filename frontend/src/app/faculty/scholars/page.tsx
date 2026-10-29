@@ -3,9 +3,11 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { ApplicationShell } from "@/components/ApplicationShell";
+import { useAuth } from "@/lib/auth";
 import { api, ScholarItem } from "@/lib/api";
 
 export default function FacultyScholarsPage() {
+  const { activeRole } = useAuth();
   const [scholars, setScholars] = useState<ScholarItem[]>([]);
   const [filter, setFilter] = useState<"ALL" | "ACTIVE" | "COMPLETED">("ALL");
   const [search, setSearch] = useState("");
@@ -14,15 +16,16 @@ export default function FacultyScholarsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const s = await api.getMyScholars();
+        const s = await api.getMyScholars(activeRole || undefined);
         setScholars(s);
       } finally {
         setLoading(false);
       }
     }
     load();
-  }, []);
+  }, [activeRole]);
 
+  const isHod = activeRole === "HOD";
   const scholarList = Array.isArray(scholars) ? scholars : [];
 
   const filtered = scholarList.filter((s) => {
@@ -39,13 +42,20 @@ export default function FacultyScholarsPage() {
   });
 
   return (
-    <ApplicationShell portalType="faculty" breadcrumb="Faculty portal / My Research Scholars">
+    <ApplicationShell
+      portalType="faculty"
+      breadcrumb={isHod ? "HOD Portal / Department Scholars" : "Faculty portal / My Research Scholars"}
+    >
       <div className="space-y-6 max-w-6xl mx-auto">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-[26px] font-bold text-[#171717]">My Research Scholars</h1>
+            <h1 className="text-[26px] font-bold text-[#171717]">
+              {isHod ? "Department Research Scholars (CSE)" : "My Research Scholars"}
+            </h1>
             <p className="text-[14px] text-[#666]">
-              Supervision dashboard tracking doctoral research milestones and thesis progress.
+              {isHod
+                ? "Departmental scholar tracking: monitoring doctoral research milestones across all scholars in the Computer Science and Engineering department."
+                : "Supervision dashboard tracking doctoral research milestones and thesis progress."}
             </p>
           </div>
 
