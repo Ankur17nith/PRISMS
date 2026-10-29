@@ -44,6 +44,24 @@ describe("PRISMS Thesis Workflow & Security Integration Suite", () => {
   let submissionId: string;
 
   before(async () => {
+    // 0. Pre-flight Database Connectivity Diagnostic
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (dbErr: any) {
+      console.error("\n" + "=".repeat(70));
+      console.error("PRISMS DATABASE CONNECTION FAILURE IN TEST SUITE:");
+      console.error("Could not reach PostgreSQL server at port 5433.");
+      console.error("Active DB Target:", process.env.DATABASE_URL_TEST || process.env.DATABASE_URL);
+      console.error("Diagnostic Error:", dbErr?.message || dbErr);
+      console.error("Resolution:");
+      console.error("  Start local PostgreSQL server with: postgres -D backend/db/postgres_data");
+      console.error("  Or start docker container with: docker compose up -d postgres");
+      console.error("=".repeat(70) + "\n");
+      throw new Error(
+        "Database connection failed: Cannot connect to PostgreSQL at port 5433. Ensure database server is running."
+      );
+    }
+
     // Resolve seeded accounts
     const s1 = await prisma.user.findUniqueOrThrow({
       where: { collegeEmail: "student1@example.test" },
