@@ -889,4 +889,119 @@ describe("PRISMS Thesis Workflow & Security Integration Suite", () => {
       assert.ok(typeof sub.currentVersion === "number");
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // M. Thesis Routing, Authority Assignments & Reader Permissions
+  // ---------------------------------------------------------------------------
+  describe("M. Thesis Routing, Authority Assignments & Reader Permissions", () => {
+    let routingTestSubId: string;
+
+    before(async () => {
+      // Upload and submit a fresh thesis for Section M
+      const pdf = createPdfBuffer("Fresh Thesis for Routing & Permissions Test");
+      const upRes = await request(app)
+        .post("/theses/upload")
+        .set("Authorization", `Bearer ${student1Token}`)
+        .attach("file", pdf, "routing_permissions_thesis.pdf");
+      assert.equal(upRes.status, 201);
+
+      const subRes = await request(app)
+        .post("/theses/submit")
+        .set("Authorization", `Bearer ${student1Token}`)
+        .send({
+          workingTitle: "Workflow Authority Isolation & Reader Permissions Test",
+          storageKey: upRes.body.file.storageKey,
+        });
+      assert.equal(subRes.status, 201);
+      routingTestSubId = subRes.body.submissionId;
+    });
+
+    it("should resolve recipients using both /recipients and /eligible-recipients routes", async () => {
+      const res1 = await request(app)
+        .get(`/theses/${routingTestSubId}/recipients`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+      const res2 = await request(app)
+        .get(`/theses/${routingTestSubId}/eligible-recipients`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+
+      assert.equal(res1.status, 200);
+      assert.equal(res2.status, 200);
+      assert.equal(res1.body.currentStage, res2.body.currentStage);
+      assert.ok(Array.isArray(res1.body.recipients));
+      assert.ok(Array.isArray(res2.body.eligibleRecipients));
+      assert.equal(res1.body.isActionable, true);
+    });
+
+    it("should reject non-assigned faculty from requesting recipients after forwarding to HOD", async () => {
+      // 1. Supervisor forwards to HOD
+      const recRes = await request(app)
+        .get(`/theses/${routingTestSubId}/recipients`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+      const hodUser = recRes.body.recipients[0];
+
+      const fwdRes = await request(app)
+        .post(`/theses/${routingTestSubId}/forward`)
+        .set("Authorization", `Bearer ${supervisor1Token}`)
+        .send({
+          decision: "APPROVE",
+          recipientUserIds: [hodUser.userId],
+          remarks: "Verified and forwarded to HOD for evaluation.",
+        });
+      assert.equal(fwdRes.status, 200);
+
+      // 2. Supervisor is no longer the assigned reviewer on the pending HOD_REVIEW stage
+      const unauthRes = await request(app)
+        .get(`/theses/${routingTestSubId}/recipients`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+
+      assert.equal(unauthRes.status, 403);
+      assert.equal(unauthRes.body.error.code, "FORBIDDEN");
+
+      // 3. But HOD IS the designated reviewer and receives eligible recipients
+      const hodRecRes = await request(app)
+        .get(`/theses/${routingTestSubId}/eligible-recipients`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(hodRecRes.status, 200);
+      assert.equal(hodRecRes.body.isActionable, true);
+      assert.ok(hodRecRes.body.recipients.length > 0);
+    });
+
+    it("should allow student to download their own submitted thesis file", async () => {
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/file/download`)
+        .set("Authorization", `Bearer ${student1Token}`);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.header["content-type"], "application/pdf");
+      assert.ok(res.header["content-disposition"].includes("attachment"));
+    });
+
+    it("should deny another student from downloading student 1's thesis (IDOR)", async () => {
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/file/download`)
+        .set("Authorization", `Bearer ${student2Token}`);
+
+      assert.equal(res.status, 403);
+    });
+
+    it("should enforce that HOD cannot download thesis file under any circumstances", async () => {
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/file/download`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 403);
+      assert.equal(res.body.error.code, "DOWNLOAD_FORBIDDEN_FOR_ROLE");
+    });
+
+    it("should allow HOD to stream thesis file inline for in-portal reading", async () => {
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/file/view`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.header["content-type"], "application/pdf");
+      assert.ok(res.header["content-disposition"].includes("inline"));
+    });
+  });
 });
