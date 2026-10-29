@@ -1,3 +1,4 @@
+import process from "node:process";
 import "dotenv/config";
 import argon2 from "argon2";
 import { prisma } from "../src/lib/prisma.js";
@@ -28,8 +29,8 @@ async function main() {
     { code: "SUPERVISOR", name: "Thesis Supervisor", scopeType: "DEPARTMENT" as const },
     { code: "HOD", name: "Head of Department", scopeType: "DEPARTMENT" as const },
     { code: "DDPC", name: "Departmental Doctoral Programme Committee Convenor", scopeType: "DEPARTMENT" as const },
-    { code: "CHAIRPERSON_SDPC", name: "Senate Doctoral Programme Committee Chairperson", scopeType: "DEPARTMENT" as const },
-    { code: "SDPC", name: "SDPC Chairperson (Alias)", scopeType: "DEPARTMENT" as const },
+    { code: "CHAIRPERSON_SDPC", name: "Senate Doctoral Programme Committee Chairperson", scopeType: "INSTITUTE" as const },
+    { code: "SDPC", name: "SDPC Chairperson (Alias)", scopeType: "INSTITUTE" as const },
     { code: "DEAN_ACADEMICS", name: "Dean of Academic Affairs", scopeType: "INSTITUTE" as const },
     { code: "DEAN", name: "Dean Academics (Alias)", scopeType: "INSTITUTE" as const },
     { code: "CHAIRPERSON_SENATE", name: "Chairperson Senate / Director", scopeType: "INSTITUTE" as const },
