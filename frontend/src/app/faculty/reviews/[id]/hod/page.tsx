@@ -46,9 +46,17 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
           })),
         ]);
         setSubmission(sub);
-        setEligibleRecipients(recipientsData.eligibleRecipients || []);
-        if (recipientsData.eligibleRecipients && recipientsData.eligibleRecipients.length > 0) {
-          setSelectedRecipientIds(recipientsData.eligibleRecipients.map((r) => r.userId));
+        const rawRecipients = recipientsData.eligibleRecipients || [];
+        const uniqueRecipientsMap = new Map<string, (typeof rawRecipients)[0]>();
+        for (const r of rawRecipients) {
+          if (!uniqueRecipientsMap.has(r.userId)) {
+            uniqueRecipientsMap.set(r.userId, r);
+          }
+        }
+        const dedupedRecipients = Array.from(uniqueRecipientsMap.values());
+        setEligibleRecipients(dedupedRecipients);
+        if (dedupedRecipients.length > 0) {
+          setSelectedRecipientIds(dedupedRecipients.map((r) => r.userId));
         }
 
         const stagesList = (sub as any).stages || [];

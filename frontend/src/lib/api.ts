@@ -724,13 +724,19 @@ export const api = {
       }>(`/theses/${submissionId}/recipients${role ? `?role=${role}` : ""}`);
 
       const rawList = res.eligibleRecipients || res.recipients || [];
-      const list = rawList.map((r) => ({
-        userId: r.userId,
-        fullName: r.fullName,
-        collegeEmail: r.collegeEmail || (r as any).email || "",
-        roleCode: r.roleCode,
-        designation: r.designation || (r as any).roleName,
-      }));
+      const listMap = new Map<string, { userId: string; fullName: string; collegeEmail: string; roleCode: string; designation?: string }>();
+      for (const r of rawList) {
+        if (!listMap.has(r.userId)) {
+          listMap.set(r.userId, {
+            userId: r.userId,
+            fullName: r.fullName,
+            collegeEmail: r.collegeEmail || (r as any).email || "",
+            roleCode: r.roleCode,
+            designation: r.designation || (r as any).roleName,
+          });
+        }
+      }
+      const list = Array.from(listMap.values());
 
       return {
         isActionable: res.isActionable !== false,

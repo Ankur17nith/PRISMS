@@ -1050,6 +1050,23 @@ export async function getFacultyReviewQueue(
   });
 }
 
+function deduplicateRecipients<T extends { userId: string; roleCode: string; roleName: string }>(list: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const item of list) {
+    const existing = map.get(item.userId);
+    if (!existing) {
+      map.set(item.userId, item);
+    } else if (
+      item.roleCode === ROLES.CHAIRPERSON_SDPC ||
+      item.roleCode === ROLES.DEAN_ACADEMICS ||
+      item.roleCode === ROLES.CHAIRPERSON_SENATE
+    ) {
+      map.set(item.userId, item);
+    }
+  }
+  return Array.from(map.values());
+}
+
 export async function getAuthorizedRecipients(submissionId: string, userId: string, role?: string) {
   const submission = await prisma.thesisSubmission.findUnique({
     where: { id: submissionId },
@@ -1103,16 +1120,18 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
       },
     });
 
-    const mapped = hodRoles.map((r) => ({
-      userId: r.user.id,
-      fullName: r.user.fullName,
-      email: r.user.collegeEmail,
-      collegeEmail: r.user.collegeEmail,
-      roleCode: ROLES.HOD,
-      roleName: r.role.name,
-      designation: r.role.name,
-      departmentName: r.department?.name ?? null,
-    }));
+    const mapped = deduplicateRecipients(
+      hodRoles.map((r) => ({
+        userId: r.user.id,
+        fullName: r.user.fullName,
+        email: r.user.collegeEmail,
+        collegeEmail: r.user.collegeEmail,
+        roleCode: ROLES.HOD,
+        roleName: r.role.name,
+        designation: r.role.name,
+        departmentName: r.department?.name ?? null,
+      })),
+    );
 
     return {
       isActionable: true,
@@ -1142,16 +1161,18 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
       },
     });
 
-    const mapped = targetRoles.map((r) => ({
-      userId: r.user.id,
-      fullName: r.user.fullName,
-      email: r.user.collegeEmail,
-      collegeEmail: r.user.collegeEmail,
-      roleCode: normalizeRoleCode(r.role.code),
-      roleName: r.role.name,
-      designation: r.role.name,
-      departmentName: r.department?.name ?? null,
-    }));
+    const mapped = deduplicateRecipients(
+      targetRoles.map((r) => ({
+        userId: r.user.id,
+        fullName: r.user.fullName,
+        email: r.user.collegeEmail,
+        collegeEmail: r.user.collegeEmail,
+        roleCode: normalizeRoleCode(r.role.code),
+        roleName: r.role.name,
+        designation: r.role.name,
+        departmentName: r.department?.name ?? null,
+      })),
+    );
 
     return {
       isActionable: true,
@@ -1183,16 +1204,18 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
       },
     });
 
-    const mapped = senateRoles.map((r) => ({
-      userId: r.user.id,
-      fullName: r.user.fullName,
-      email: r.user.collegeEmail,
-      collegeEmail: r.user.collegeEmail,
-      roleCode: ROLES.CHAIRPERSON_SENATE,
-      roleName: r.role.name,
-      designation: r.role.name,
-      departmentName: "Institute-wide",
-    }));
+    const mapped = deduplicateRecipients(
+      senateRoles.map((r) => ({
+        userId: r.user.id,
+        fullName: r.user.fullName,
+        email: r.user.collegeEmail,
+        collegeEmail: r.user.collegeEmail,
+        roleCode: ROLES.CHAIRPERSON_SENATE,
+        roleName: r.role.name,
+        designation: r.role.name,
+        departmentName: "Institute-wide",
+      })),
+    );
 
     return {
       isActionable: true,
@@ -1317,7 +1340,10 @@ export async function forwardSubmission(
     throw new AppError(400, "At least one forwarding recipient is required for this stage", "RECIPIENT_REQUIRED");
   }
 
-  for (const recipientId of input.recipientUserIds) {
+  // Canonical deduplication of target recipients
+  const distinctRecipientUserIds = Array.from(new Set(input.recipientUserIds));
+
+  for (const recipientId of distinctRecipientUserIds) {
     if (!authorizedUserIds.includes(recipientId)) {
       throw new AppError(
         400,
@@ -1364,7 +1390,7 @@ export async function forwardSubmission(
       await tx.reviewAssignment.create({
         data: {
           submissionStageId: nextStage.id,
-          reviewerUserId: input.recipientUserIds[0]!,
+          reviewerUserId: distinctRecipientUserIds[0]!,
           reviewerRoleId: hodRole?.id ?? null,
           assignedByUserId: userId,
           assignmentStatus: "ASSIGNED",
@@ -1378,7 +1404,7 @@ export async function forwardSubmission(
       });
     } else if (currentStage.definition.code === STAGE_CODES.HOD_REVIEW) {
       // Forward to SDPC and/or Dean Academics
-      for (const recId of input.recipientUserIds) {
+      for (const recId of distinctRecipientUserIds) {
         const recipientMeta = authorized.recipients.find((r) => r.userId === recId);
         const isSdpc = recipientMeta?.roleCode === ROLES.CHAIRPERSON_SDPC;
         const targetCode = isSdpc ? STAGE_CODES.SDPC_REVIEW : STAGE_CODES.DEAN_REVIEW;
