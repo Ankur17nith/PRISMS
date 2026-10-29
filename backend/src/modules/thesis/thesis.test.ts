@@ -42,6 +42,7 @@ describe("PRISMS Thesis Workflow & Security Integration Suite", () => {
 
   let uploadedStorageKey: string;
   let submissionId: string;
+  let routingTestSubId: string;
 
   before(async () => {
     // 0. Pre-flight Database Connectivity Diagnostic
@@ -608,6 +609,31 @@ describe("PRISMS Thesis Workflow & Security Integration Suite", () => {
       assert.equal(res.status, 403);
       assert.equal(res.body.error.code, "FORBIDDEN");
     });
+
+    it("should allow HOD to list all departmental scholars using role=HOD query param", async () => {
+      const res = await request(app)
+        .get("/theses/supervisor/scholars?role=HOD")
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 200);
+      assert.ok(res.body.scholars.length >= 2);
+      const student1 = res.body.scholars.find((s: any) => s.rollNumber === "21PHDCSE01");
+      const student2 = res.body.scholars.find((s: any) => s.rollNumber === "21PHDCSE02");
+      assert.ok(student1, "Student 1 must be visible to HOD");
+      assert.ok(student2, "Student 2 must be visible to HOD");
+      assert.equal(student1.departmentCode, "CSE");
+      assert.equal(student2.departmentCode, "CSE");
+    });
+
+    it("should allow HOD to view submission history for any scholar in their department", async () => {
+      const res = await request(app)
+        .get(`/theses/supervisor/scholars/${student1Id}?role=HOD`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.scholar.rollNumber, "21PHDCSE01");
+      assert.ok(res.body.submissions.length >= 1);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -887,6 +913,286 @@ describe("PRISMS Thesis Workflow & Security Integration Suite", () => {
       assert.ok(typeof sub.title === "string");
       assert.ok(typeof sub.submissionReference === "string");
       assert.ok(typeof sub.currentVersion === "number");
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // M. Thesis Routing, Authority Assignments & Reader Permissions
+  // ---------------------------------------------------------------------------
+  describe("M. Thesis Routing, Authority Assignments & Reader Permissions", () => {
+    before(async () => {
+      // Upload and submit a fresh thesis for Section M
+      const pdf = createPdfBuffer("Fresh Thesis for Routing & Permissions Test");
+      const upRes = await request(app)
+        .post("/theses/upload")
+        .set("Authorization", `Bearer ${student1Token}`)
+        .attach("file", pdf, "routing_permissions_thesis.pdf");
+      assert.equal(upRes.status, 201);
+
+      const subRes = await request(app)
+        .post("/theses/submit")
+        .set("Authorization", `Bearer ${student1Token}`)
+        .send({
+          workingTitle: "Workflow Authority Isolation & Reader Permissions Test",
+          storageKey: upRes.body.file.storageKey,
+        });
+      assert.equal(subRes.status, 201);
+      routingTestSubId = subRes.body.submissionId;
+    });
+
+    it("should resolve recipients using both /recipients and /eligible-recipients routes", async () => {
+      const res1 = await request(app)
+        .get(`/theses/${routingTestSubId}/recipients`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+      const res2 = await request(app)
+        .get(`/theses/${routingTestSubId}/eligible-recipients`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+
+      assert.equal(res1.status, 200);
+      assert.equal(res2.status, 200);
+      assert.equal(res1.body.currentStage, res2.body.currentStage);
+      assert.ok(Array.isArray(res1.body.recipients));
+      assert.ok(Array.isArray(res2.body.eligibleRecipients));
+      assert.equal(res1.body.isActionable, true);
+    });
+
+    it("should reject non-assigned faculty from requesting recipients after forwarding to HOD", async () => {
+      // 1. Supervisor forwards to HOD
+      const recRes = await request(app)
+        .get(`/theses/${routingTestSubId}/recipients`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+      const hodUser = recRes.body.recipients[0];
+
+      const fwdRes = await request(app)
+        .post(`/theses/${routingTestSubId}/forward`)
+        .set("Authorization", `Bearer ${supervisor1Token}`)
+        .send({
+          decision: "APPROVE",
+          recipientUserIds: [hodUser.userId],
+          remarks: "Verified and forwarded to HOD for evaluation.",
+        });
+      assert.equal(fwdRes.status, 200);
+
+      // 2. Supervisor is no longer the assigned reviewer on the pending HOD_REVIEW stage
+      const unauthRes = await request(app)
+        .get(`/theses/${routingTestSubId}/recipients`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+
+      assert.equal(unauthRes.status, 403);
+      assert.equal(unauthRes.body.error.code, "FORBIDDEN");
+
+      // 3. But HOD IS the designated reviewer and receives eligible recipients
+      const hodRecRes = await request(app)
+        .get(`/theses/${routingTestSubId}/eligible-recipients`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(hodRecRes.status, 200);
+      assert.equal(hodRecRes.body.isActionable, true);
+      assert.ok(hodRecRes.body.recipients.length > 0);
+    });
+
+    it("should allow student to download their own submitted thesis file", async () => {
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/file/download`)
+        .set("Authorization", `Bearer ${student1Token}`);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.header["content-type"], "application/pdf");
+      assert.ok(res.header["content-disposition"].includes("attachment"));
+    });
+
+    it("should deny another student from downloading student 1's thesis (IDOR)", async () => {
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/file/download`)
+        .set("Authorization", `Bearer ${student2Token}`);
+
+      assert.equal(res.status, 403);
+    });
+
+    it("should enforce that HOD cannot download thesis file under any circumstances", async () => {
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/file/download`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 403);
+      assert.equal(res.body.error.code, "DOWNLOAD_FORBIDDEN_FOR_ROLE");
+    });
+
+    it("should allow HOD to stream thesis file inline for in-portal reading", async () => {
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/file/view`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.header["content-type"], "application/pdf");
+      assert.ok(res.header["content-disposition"].includes("inline"));
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // N. Regressions: Parallel Convergence, Role Verification, Byte-Range & Deduplication
+  // ---------------------------------------------------------------------------
+  describe("N. Regressions: Parallel Convergence, Role Verification, Byte-Range & Deduplication", () => {
+    it("should provide HOD with strictly deduplicated eligible recipients across aliases", async () => {
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/recipients`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 200);
+      assert.ok(Array.isArray(res.body.recipients));
+      assert.ok(res.body.recipients.length >= 2);
+
+      const userIds = res.body.recipients.map((r: any) => r.userId);
+      const uniqueUserIds = new Set(userIds);
+      assert.equal(uniqueUserIds.size, userIds.length, "Recipients list must have no duplicate userIds");
+    });
+
+    it("should support byte-range HTTP 206 streaming for PDF viewer", async () => {
+      // 1. Valid range request
+      const res = await request(app)
+        .get(`/theses/${routingTestSubId}/file/view`)
+        .set("Authorization", `Bearer ${student1Token}`)
+        .set("Range", "bytes=0-15");
+
+      assert.equal(res.status, 206);
+      assert.equal(res.header["accept-ranges"], "bytes");
+      assert.ok(res.header["content-range"].startsWith("bytes 0-15/"));
+      assert.equal(res.header["content-length"], "16");
+      assert.equal(res.header["content-type"], "application/pdf");
+      assert.ok(res.header["content-disposition"].includes("inline"));
+
+      // 2. Invalid range request -> 416 Range Not Satisfiable
+      const invalidRes = await request(app)
+        .get(`/theses/${routingTestSubId}/file/view`)
+        .set("Authorization", `Bearer ${student1Token}`)
+        .set("Range", "bytes=9999999-99999999");
+
+      assert.equal(invalidRes.status, 416);
+    });
+
+    it("should reject download when claiming unauthorized active role or acting as HOD", async () => {
+      // 1. Attempting to download claiming HOD role via X-Active-Role header -> 403 DOWNLOAD_FORBIDDEN_FOR_ROLE
+      const hodHeaderRes = await request(app)
+        .get(`/theses/${routingTestSubId}/file/download`)
+        .set("Authorization", `Bearer ${hodToken}`)
+        .set("X-Active-Role", "HOD");
+
+      assert.equal(hodHeaderRes.status, 403);
+      assert.equal(hodHeaderRes.body.error.code, "DOWNLOAD_FORBIDDEN_FOR_ROLE");
+
+      // 2. Attempting to download claiming HOD role via query param -> 403 DOWNLOAD_FORBIDDEN_FOR_ROLE
+      const hodQueryRes = await request(app)
+        .get(`/theses/${routingTestSubId}/file/download?role=HOD`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(hodQueryRes.status, 403);
+      assert.equal(hodQueryRes.body.error.code, "DOWNLOAD_FORBIDDEN_FOR_ROLE");
+
+      // 3. Attempting to claim a role that the user does NOT possess -> 403 ROLE_UNAUTHORIZED
+      const spoofedRes = await request(app)
+        .get(`/theses/${routingTestSubId}/file/download`)
+        .set("Authorization", `Bearer ${student1Token}`)
+        .set("X-Active-Role", "CHAIRPERSON_SENATE");
+
+      assert.equal(spoofedRes.status, 403);
+      assert.equal(spoofedRes.body.error.code, "ROLE_UNAUTHORIZED");
+    });
+
+    it("should synchronize parallel SDPC and Dean review branches and only create Senate Review when both finish", async () => {
+      // 1. HOD forwards to both SDPC and Dean in parallel
+      const hodFwd = await request(app)
+        .post(`/theses/${routingTestSubId}/forward`)
+        .set("Authorization", `Bearer ${hodToken}`)
+        .send({
+          decision: "APPROVE",
+          recipientUserIds: [sdpcUserId, deanUserId],
+          summary: "Forwarded to both SDPC and Dean in parallel.",
+        });
+      assert.equal(hodFwd.status, 200);
+
+      // Verify both Stage 3 stages are active
+      let res = await request(app)
+        .get(`/theses/${routingTestSubId}`)
+        .set("Authorization", `Bearer ${student1Token}`);
+      assert.equal(res.status, 200);
+      let sub = res.body.submission || res.body;
+
+      const stage3Stages = sub.stages.filter(
+        (s: any) => s.stageCode === STAGE_CODES.SDPC_REVIEW || s.stageCode === STAGE_CODES.DEAN_REVIEW
+      );
+      assert.equal(stage3Stages.length, 2, "Both SDPC and Dean stages must exist in parallel");
+
+      // 2. SDPC completes review first and forwards to Chairperson Senate
+      const sdpcFwd = await request(app)
+        .post(`/theses/${routingTestSubId}/forward`)
+        .set("Authorization", `Bearer ${sdpcToken}`)
+        .send({
+          decision: "APPROVE",
+          recipientUserIds: [chairmanUserId],
+          summary: "SDPC recommends dissertation approval.",
+        });
+      assert.equal(sdpcFwd.status, 200);
+
+      // Verify SDPC stage is COMPLETED, but Senate Review is NOT yet created because Dean Review is still PENDING
+      res = await request(app)
+        .get(`/theses/${routingTestSubId}`)
+        .set("Authorization", `Bearer ${student1Token}`);
+      sub = res.body.submission || res.body;
+
+      const sdpcStage = sub.stages.find((s: any) => s.stageCode === STAGE_CODES.SDPC_REVIEW);
+      const deanStage = sub.stages.find((s: any) => s.stageCode === STAGE_CODES.DEAN_REVIEW);
+      let senateStage = sub.stages.find((s: any) => s.stageCode === STAGE_CODES.SENATE_REVIEW);
+
+      assert.equal(sdpcStage.status, "COMPLETED");
+      assert.equal(deanStage.status, "PENDING");
+      assert.equal(senateStage, undefined, "Senate Review stage must NOT be created before Dean finishes");
+      assert.equal(sub.status, "IN_REVIEW");
+
+      // 3. Dean completes review second and forwards to Chairperson Senate
+      const deanFwd = await request(app)
+        .post(`/theses/${routingTestSubId}/forward`)
+        .set("Authorization", `Bearer ${deanToken}`)
+        .send({
+          decision: "APPROVE",
+          recipientUserIds: [chairmanUserId],
+          summary: "Dean Academics concurs and recommends final approval.",
+        });
+      assert.equal(deanFwd.status, 200);
+
+      // Verify that NOW Senate Review stage IS created and assigned to Chairperson Senate
+      res = await request(app)
+        .get(`/theses/${routingTestSubId}`)
+        .set("Authorization", `Bearer ${student1Token}`);
+      sub = res.body.submission || res.body;
+
+      senateStage = sub.stages.find((s: any) => s.stageCode === STAGE_CODES.SENATE_REVIEW);
+      assert.ok(senateStage, "Senate Review stage must be created once all parallel branches complete");
+      assert.equal(senateStage.status, "PENDING");
+      assert.ok(
+        senateStage.assignments.some((a: any) => a.reviewerUserId === chairmanUserId),
+        "Chairman Senate must be assigned to Senate Review stage"
+      );
+
+      // 4. Chairperson Senate grants final approval
+      const senateApproval = await request(app)
+        .post(`/theses/${routingTestSubId}/forward`)
+        .set("Authorization", `Bearer ${chairmanToken}`)
+        .send({
+          decision: "APPROVE",
+          recipientUserIds: [],
+          summary: "Senate confers doctoral degree.",
+        });
+      assert.equal(senateApproval.status, 200);
+
+      // Final check: submission is APPROVED, thesis is CLOSED
+      res = await request(app)
+        .get(`/theses/${routingTestSubId}`)
+        .set("Authorization", `Bearer ${student1Token}`);
+      sub = res.body.submission || res.body;
+
+      assert.equal(sub.status, "APPROVED");
+      const dbThesis = await prisma.thesis.findUnique({ where: { id: sub.thesis.id } });
+      assert.equal(dbThesis?.status, "CLOSED");
     });
   });
 });

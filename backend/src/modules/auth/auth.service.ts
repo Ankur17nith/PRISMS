@@ -288,24 +288,93 @@ export async function resetPassword(token: string, password: string, req: Reques
 
 // -------------------------------------------------------------------- me
 
+export const CANONICAL_ROLE_NAMES: Record<string, string> = {
+  CHAIRPERSON_SDPC: "SDPC Chairperson",
+  SDPC: "SDPC Chairperson",
+  DEAN_ACADEMICS: "Dean of Academic Affairs",
+  DEAN: "Dean of Academic Affairs",
+  CHAIRPERSON_SENATE: "Chairperson Senate / Director",
+  CHAIRMAN: "Chairperson Senate / Director",
+  HOD: "Head of Department",
+  SUPERVISOR: "Thesis Supervisor",
+  DDPC: "Departmental Doctoral Programme Committee Convenor",
+  STUDENT: "Doctoral Student / Scholar",
+  ADMIN: "System Administrator",
+};
+
+export function normalizeRoleCode(code: string): string {
+  const upper = (code || "").trim().toUpperCase();
+  if (upper === "CHAIRMAN") return "CHAIRPERSON_SENATE";
+  if (upper === "SDPC") return "CHAIRPERSON_SDPC";
+  if (upper === "DEAN") return "DEAN_ACADEMICS";
+  return upper;
+}
+
 export async function getActiveRoles(userId: string) {
   const now = new Date();
   const rows = await prisma.userRole.findMany({
     where: { userId, validFrom: { lte: now }, OR: [{ validUntil: null }, { validUntil: { gt: now } }] },
     include: { role: { select: { code: true, name: true, isActive: true } }, department: { select: { id: true, code: true } } },
   });
-  return rows
-    .filter((r) => r.role.isActive)
-    .map((r) => ({ code: r.role.code, name: r.role.name, departmentId: r.department?.id ?? null, departmentCode: r.department?.code ?? null }));
+
+  const seen = new Set<string>();
+  const deduped: Array<{
+    id?: string;
+    code: string;
+    name: string;
+    departmentId: string | null;
+    departmentCode: string | null;
+  }> = [];
+
+  for (const r of rows) {
+    if (!r.role.isActive) continue;
+    const canonicalCode = normalizeRoleCode(r.role.code);
+    const deptKey = r.department?.id ?? "INSTITUTE";
+    const dedupKey = `${canonicalCode}_${deptKey}`;
+    if (seen.has(dedupKey)) continue;
+    seen.add(dedupKey);
+
+    deduped.push({
+      id: r.id,
+      code: canonicalCode,
+      name: CANONICAL_ROLE_NAMES[canonicalCode] || r.role.name,
+      departmentId: r.department?.id ?? null,
+      departmentCode: r.department?.code ?? null,
+    });
+  }
+
+  return deduped;
 }
 
 export async function getMe(userId: string) {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
     select: {
-      id: true, collegeEmail: true, fullName: true, accountStatus: true, mustChangePassword: true,
-      studentProfile: { select: { id: true, rollNumber: true } },
-      facultyProfile: { select: { id: true, designation: true } },
+      id: true,
+      collegeEmail: true,
+      fullName: true,
+      phone: true,
+      accountStatus: true,
+      mustChangePassword: true,
+      studentProfile: {
+        select: {
+          id: true,
+          rollNumber: true,
+          program: true,
+          admissionStatus: true,
+          departmentId: true,
+          department: { select: { id: true, code: true, name: true } },
+        },
+      },
+      facultyProfile: {
+        select: {
+          id: true,
+          employeeNumber: true,
+          designation: true,
+          departmentId: true,
+          department: { select: { id: true, code: true, name: true } },
+        },
+      },
     },
   });
   return { ...user, roles: await getActiveRoles(userId) };

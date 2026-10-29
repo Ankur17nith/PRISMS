@@ -2,6 +2,7 @@ import type { Request } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import { audit } from "../../lib/audit.js";
 import { fileExists, getSecureFilePath, ValidatedPdf } from "../../lib/storage.js";
 import type { AuthContext } from "../../middleware/auth.js";
@@ -180,13 +181,14 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
         status: "IN_PROGRESS",
       },
     });
-  } else if (input.workingTitle || input.abstract || input.researchArea) {
+  } else {
     thesis = await prisma.thesis.update({
       where: { id: thesis.id },
       data: {
         workingTitle: title,
         abstract: input.abstract !== undefined ? input.abstract : thesis.abstract,
         researchArea: input.researchArea !== undefined ? input.researchArea : thesis.researchArea,
+        status: "IN_PROGRESS",
       },
     });
   }
@@ -244,12 +246,15 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
       },
     });
 
-    // 2. Link file with accurate byte size
+    // 2. Link file with accurate byte size and sha256 checksum
     let fileSizeBytes = BigInt(0);
+    let sha256Checksum: string | null = null;
     try {
       const filePath = getSecureFilePath(input.storageKey!);
       if (fs.existsSync(filePath)) {
-        fileSizeBytes = BigInt(fs.statSync(filePath).size);
+        const fileBuf = fs.readFileSync(filePath);
+        fileSizeBytes = BigInt(fileBuf.length);
+        sha256Checksum = createHash("sha256").update(fileBuf).digest("hex");
       }
     } catch {
       // fallback
@@ -263,6 +268,7 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
         storageKey: input.storageKey!,
         mimeType: "application/pdf",
         fileSizeBytes,
+        sha256Checksum,
         scanStatus: "CLEAN",
         isPrimary: true,
       },
@@ -363,12 +369,15 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
       },
     });
 
-    // 2. Link newly uploaded revised file with accurate byte size
+    // 2. Link newly uploaded revised file with accurate byte size and sha256 checksum
     let resubmitFileSizeBytes = BigInt(0);
+    let resubmitSha256: string | null = null;
     try {
       const filePath = getSecureFilePath(input.storageKey);
       if (fs.existsSync(filePath)) {
-        resubmitFileSizeBytes = BigInt(fs.statSync(filePath).size);
+        const fileBuf = fs.readFileSync(filePath);
+        resubmitFileSizeBytes = BigInt(fileBuf.length);
+        resubmitSha256 = createHash("sha256").update(fileBuf).digest("hex");
       }
     } catch {
       // fallback
@@ -382,9 +391,15 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
         storageKey: input.storageKey,
         mimeType: "application/pdf",
         fileSizeBytes: resubmitFileSizeBytes,
+        sha256Checksum: resubmitSha256,
         scanStatus: "CLEAN",
         isPrimary: true,
       },
+    });
+
+    await tx.thesis.update({
+      where: { id: thesis.id },
+      data: { status: "IN_PROGRESS" },
     });
 
     // 3. Create Stage 1 again for Supervisor review
@@ -679,9 +694,16 @@ export async function getSubmissionDetail(submissionId: string, auth: AuthContex
         assignments: st.assignments.map((a) => ({
           id: a.id,
           reviewerId: a.reviewerUserId,
+          reviewerUserId: a.reviewerUserId,
           reviewerName: a.reviewer.fullName,
           reviewerRole: a.reviewerRole?.code ?? "REVIEWER",
+          reviewer: {
+            id: a.reviewer.id,
+            fullName: a.reviewer.fullName,
+            collegeEmail: a.reviewer.collegeEmail,
+          },
           status: a.assignmentStatus,
+          assignmentStatus: a.assignmentStatus,
           decision: a.review?.decision ?? null,
           decisionSummary: a.review?.summary ?? null,
           decidedAt: a.review?.decidedAt ?? null,
@@ -713,7 +735,7 @@ export async function authorizeDocumentAccess(
     where: { id: submissionId },
     include: {
       thesis: { include: { student: true } },
-      files: true,
+      files: { orderBy: { uploadedAt: "desc" } },
       stages: { include: { definition: true, assignments: true } },
     },
   });
@@ -728,6 +750,21 @@ export async function authorizeDocumentAccess(
 
   if (!targetFile) {
     throw new AppError(404, "No matching thesis file associated with this submission", "FILE_NOT_FOUND");
+  }
+
+  // Ensure file physically exists in private storage
+  if (!fileExists(targetFile.storageKey)) {
+    throw new AppError(404, "Thesis PDF document not found in secure institutional storage", "FILE_NOT_FOUND");
+  }
+
+  // Validate PDF magic bytes on disk
+  const filePath = getSecureFilePath(targetFile.storageKey);
+  const headBuf = Buffer.alloc(5);
+  const fd = fs.openSync(filePath, "r");
+  fs.readSync(fd, headBuf, 0, 5, 0);
+  fs.closeSync(fd);
+  if (!headBuf.toString("utf-8").startsWith("%PDF-")) {
+    throw new AppError(400, "Corrupted thesis file: invalid PDF signature", "INVALID_FILE_SIGNATURE");
   }
 
   const studentDeptId = submission.thesis.student.departmentId;
@@ -772,6 +809,19 @@ export async function authorizeDocumentAccess(
 
   // 2. DOWNLOAD RESTRICTION (MANDATORY INSTITUTIONAL RULE)
   if (action === "download") {
+    // Validate that if client claims to act under a specific role, they actually hold that role
+    const activeRoleHeader = req?.headers["x-active-role"] as string | undefined;
+    const activeRoleQuery = req?.query?.role as string | undefined;
+    const requestedRole = activeRoleHeader || activeRoleQuery;
+    if (requestedRole) {
+      const hasClaimedRole = auth.roles.some(
+        (r) => normalizeRoleCode(r.code) === normalizeRoleCode(requestedRole),
+      );
+      if (!hasClaimedRole) {
+        throw new AppError(403, `User does not possess claimed role ${requestedRole}`, "ROLE_UNAUTHORIZED");
+      }
+    }
+
     // Check if the user is acting in HOD review mode or currently assigned to HOD review stage
     const isHodReviewAssignment = submission.stages.some(
       (st) =>
@@ -783,8 +833,8 @@ export async function authorizeDocumentAccess(
         ),
     );
     const isActingAsHod =
-      req?.headers["x-active-role"] === "HOD" ||
-      req?.query?.role === "HOD" ||
+      normalizeRoleCode(activeRoleHeader || "") === ROLES.HOD ||
+      normalizeRoleCode(activeRoleQuery || "") === ROLES.HOD ||
       isHodReviewAssignment;
 
     // Under NIT Hamirpur regulations, HOD review workflow or HOD role (unless also the assigned individual supervisor)
@@ -1013,7 +1063,24 @@ export async function getFacultyReviewQueue(
   });
 }
 
-export async function getAuthorizedRecipients(submissionId: string, userId: string) {
+function deduplicateRecipients<T extends { userId: string; roleCode: string; roleName: string }>(list: T[]): T[] {
+  const map = new Map<string, T>();
+  for (const item of list) {
+    const existing = map.get(item.userId);
+    if (!existing) {
+      map.set(item.userId, item);
+    } else if (
+      item.roleCode === ROLES.CHAIRPERSON_SDPC ||
+      item.roleCode === ROLES.DEAN_ACADEMICS ||
+      item.roleCode === ROLES.CHAIRPERSON_SENATE
+    ) {
+      map.set(item.userId, item);
+    }
+  }
+  return Array.from(map.values());
+}
+
+export async function getAuthorizedRecipients(submissionId: string, userId: string, role?: string) {
   const submission = await prisma.thesisSubmission.findUnique({
     where: { id: submissionId },
     include: {
@@ -1031,7 +1098,14 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
 
   const currentStage = submission.stages[0];
   if (!currentStage) {
-    throw new AppError(400, "No active workflow stage is currently pending", "NO_ACTIVE_STAGE");
+    return {
+      isActionable: false,
+      currentStage: "Completed",
+      targetStage: null,
+      allowedSelection: "none",
+      recipients: [],
+      eligibleRecipients: [],
+    };
   }
 
   // Verify that requester is assigned reviewer for this active stage
@@ -1059,17 +1133,26 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
       },
     });
 
-    return {
-      currentStage: currentStage.definition.name,
-      allowedSelection: "single",
-      recipients: hodRoles.map((r) => ({
+    const mapped = deduplicateRecipients(
+      hodRoles.map((r) => ({
         userId: r.user.id,
         fullName: r.user.fullName,
         email: r.user.collegeEmail,
+        collegeEmail: r.user.collegeEmail,
         roleCode: ROLES.HOD,
         roleName: r.role.name,
+        designation: r.role.name,
         departmentName: r.department?.name ?? null,
       })),
+    );
+
+    return {
+      isActionable: true,
+      currentStage: currentStage.definition.name,
+      targetStage: "Head of Department Review",
+      allowedSelection: "single",
+      recipients: mapped,
+      eligibleRecipients: mapped,
     };
   }
 
@@ -1091,17 +1174,26 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
       },
     });
 
-    return {
-      currentStage: currentStage.definition.name,
-      allowedSelection: "single_or_both",
-      recipients: targetRoles.map((r) => ({
+    const mapped = deduplicateRecipients(
+      targetRoles.map((r) => ({
         userId: r.user.id,
         fullName: r.user.fullName,
         email: r.user.collegeEmail,
+        collegeEmail: r.user.collegeEmail,
         roleCode: normalizeRoleCode(r.role.code),
         roleName: r.role.name,
+        designation: r.role.name,
         departmentName: r.department?.name ?? null,
       })),
+    );
+
+    return {
+      isActionable: true,
+      currentStage: currentStage.definition.name,
+      targetStage: "SDPC & Dean Review",
+      allowedSelection: "single_or_both",
+      recipients: mapped,
+      eligibleRecipients: mapped,
     };
   }
 
@@ -1125,24 +1217,36 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
       },
     });
 
-    return {
-      currentStage: currentStage.definition.name,
-      allowedSelection: "single",
-      recipients: senateRoles.map((r) => ({
+    const mapped = deduplicateRecipients(
+      senateRoles.map((r) => ({
         userId: r.user.id,
         fullName: r.user.fullName,
         email: r.user.collegeEmail,
+        collegeEmail: r.user.collegeEmail,
         roleCode: ROLES.CHAIRPERSON_SENATE,
         roleName: r.role.name,
+        designation: r.role.name,
         departmentName: "Institute-wide",
       })),
+    );
+
+    return {
+      isActionable: true,
+      currentStage: currentStage.definition.name,
+      targetStage: "Senate Review & Final Approval",
+      allowedSelection: "single",
+      recipients: mapped,
+      eligibleRecipients: mapped,
     };
   }
 
   return {
+    isActionable: true,
     currentStage: currentStage.definition.name,
+    targetStage: null,
     allowedSelection: "final_decision",
     recipients: [],
+    eligibleRecipients: [],
   };
 }
 
@@ -1249,7 +1353,10 @@ export async function forwardSubmission(
     throw new AppError(400, "At least one forwarding recipient is required for this stage", "RECIPIENT_REQUIRED");
   }
 
-  for (const recipientId of input.recipientUserIds) {
+  // Canonical deduplication of target recipients
+  const distinctRecipientUserIds = Array.from(new Set(input.recipientUserIds));
+
+  for (const recipientId of distinctRecipientUserIds) {
     if (!authorizedUserIds.includes(recipientId)) {
       throw new AppError(
         400,
@@ -1296,7 +1403,7 @@ export async function forwardSubmission(
       await tx.reviewAssignment.create({
         data: {
           submissionStageId: nextStage.id,
-          reviewerUserId: input.recipientUserIds[0]!,
+          reviewerUserId: distinctRecipientUserIds[0]!,
           reviewerRoleId: hodRole?.id ?? null,
           assignedByUserId: userId,
           assignmentStatus: "ASSIGNED",
@@ -1310,7 +1417,7 @@ export async function forwardSubmission(
       });
     } else if (currentStage.definition.code === STAGE_CODES.HOD_REVIEW) {
       // Forward to SDPC and/or Dean Academics
-      for (const recId of input.recipientUserIds) {
+      for (const recId of distinctRecipientUserIds) {
         const recipientMeta = authorized.recipients.find((r) => r.userId === recId);
         const isSdpc = recipientMeta?.roleCode === ROLES.CHAIRPERSON_SDPC;
         const targetCode = isSdpc ? STAGE_CODES.SDPC_REVIEW : STAGE_CODES.DEAN_REVIEW;
@@ -1345,30 +1452,57 @@ export async function forwardSubmission(
       currentStage.definition.code === STAGE_CODES.SDPC_REVIEW ||
       currentStage.definition.code === STAGE_CODES.DEAN_REVIEW
     ) {
-      // Forward to Senate Review (final stage)
-      const senateStageDef = await getOrCreateStageDefinition(STAGE_CODES.SENATE_REVIEW, "Senate Chairperson Review", 4);
-      const senateRole = await tx.role.findFirst({
-        where: { code: { in: [ROLES.CHAIRPERSON_SENATE, ROLES.CHAIRMAN] } },
-      });
-      const stage = await tx.submissionStage.create({
-        data: {
+      // Check if there are other parallel review stages at Stage 3 (SDPC / Dean) still PENDING
+      const parallelOtherPending = await tx.submissionStage.findFirst({
+        where: {
           submissionId: submission.id,
-          stageDefinitionId: senateStageDef.id,
+          id: { not: currentStage.id },
           status: "PENDING",
-          startedAt: new Date(),
+          definition: {
+            code: { in: [STAGE_CODES.SDPC_REVIEW, STAGE_CODES.DEAN_REVIEW] },
+          },
         },
       });
-      await tx.reviewAssignment.create({
-        data: {
-          submissionStageId: stage.id,
-          reviewerUserId: input.recipientUserIds[0]!,
-          reviewerRoleId: senateRole?.id ?? null,
-          assignedByUserId: userId,
-          assignmentStatus: "ASSIGNED",
-          isRequired: true,
-          assignmentNote: "Forwarded for final Senate decision",
-        },
-      });
+
+      if (!parallelOtherPending) {
+        // All parallel review branches are completed: advance to Senate Review
+        const existingSenateStage = await tx.submissionStage.findFirst({
+          where: {
+            submissionId: submission.id,
+            definition: { code: STAGE_CODES.SENATE_REVIEW },
+          },
+        });
+
+        if (!existingSenateStage) {
+          const senateStageDef = await getOrCreateStageDefinition(
+            STAGE_CODES.SENATE_REVIEW,
+            "Senate Chairperson Review",
+            4,
+          );
+          const senateRole = await tx.role.findFirst({
+            where: { code: { in: [ROLES.CHAIRPERSON_SENATE, ROLES.CHAIRMAN] } },
+          });
+          const stage = await tx.submissionStage.create({
+            data: {
+              submissionId: submission.id,
+              stageDefinitionId: senateStageDef.id,
+              status: "PENDING",
+              startedAt: new Date(),
+            },
+          });
+          await tx.reviewAssignment.create({
+            data: {
+              submissionStageId: stage.id,
+              reviewerUserId: distinctRecipientUserIds[0]!,
+              reviewerRoleId: senateRole?.id ?? null,
+              assignedByUserId: userId,
+              assignmentStatus: "ASSIGNED",
+              isRequired: true,
+              assignmentNote: "Forwarded for final Senate decision",
+            },
+          });
+        }
+      }
     }
 
     if (input.summary) {
@@ -1593,13 +1727,115 @@ export async function rejectSubmission(
 // Supervisor: Scholar Tracking API
 // -----------------------------------------------------------------------------
 
-export async function getSupervisorScholars(userId: string, query: ScholarQuery) {
-  const faculty = await prisma.faculty.findUnique({ where: { userId } });
+export async function getSupervisorScholars(
+  userId: string,
+  query: ScholarQuery,
+  actingRole?: string,
+) {
+  const faculty = await prisma.faculty.findUnique({
+    where: { userId },
+    include: { department: true },
+  });
   if (!faculty) {
     throw new AppError(403, "You do not have a registered faculty profile", "NOT_FACULTY");
   }
 
+  const isHod = normalizeRoleCode(actingRole || "") === ROLES.HOD;
   const now = new Date();
+
+  if (isHod) {
+    const studentWhere: any = { departmentId: faculty.departmentId };
+    if (query.status === "current") {
+      studentWhere.admissionStatus = { in: ["CONFIRMED", "ACTIVE", "Active"] };
+    } else if (query.status === "completed") {
+      studentWhere.admissionStatus = "COMPLETED";
+    }
+
+    if (query.search) {
+      studentWhere.OR = [
+        { rollNumber: { contains: query.search, mode: "insensitive" } },
+        { user: { fullName: { contains: query.search, mode: "insensitive" } } },
+      ];
+    }
+
+    const total = await prisma.student.count({ where: studentWhere });
+    const students = await prisma.student.findMany({
+      where: studentWhere,
+      skip: (query.page - 1) * query.limit,
+      take: query.limit,
+      orderBy: { rollNumber: "asc" },
+      include: {
+        user: { select: { fullName: true, collegeEmail: true } },
+        department: { select: { code: true, name: true } },
+        thesis: {
+          include: {
+            submissions: {
+              orderBy: { submissionNumber: "desc" },
+              take: 1,
+              include: {
+                stages: {
+                  where: { status: "PENDING" },
+                  include: { definition: true },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+        supervisorAssignments: {
+          where: {
+            startDate: { lte: now },
+            OR: [{ endDate: null }, { endDate: { gt: now } }],
+          },
+          include: { faculty: { include: { user: { select: { fullName: true } } } } },
+          take: 1,
+        },
+      },
+    });
+
+    const scholars = students.map((s) => {
+      const latestSub = s.thesis?.submissions[0];
+      const currentPendingStage = latestSub?.stages[0];
+      const supervisorName = s.supervisorAssignments[0]?.faculty.user.fullName ?? "Unassigned";
+
+      return {
+        scholarId: s.id,
+        studentId: s.id,
+        rollNumber: s.rollNumber,
+        fullName: s.user.fullName,
+        email: s.user.collegeEmail,
+        collegeEmail: s.user.collegeEmail,
+        program: s.program,
+        admissionStatus: s.admissionStatus,
+        departmentCode: s.department.code,
+        departmentName: s.department.name,
+        supervisionStatus: "CURRENT",
+        supervisorName,
+        activeSubmission: latestSub
+          ? {
+              id: latestSub.id,
+              submissionReference: `TH-2026-${String(latestSub.submissionNumber).padStart(3, "0")}`,
+              title: s.thesis?.workingTitle ?? "Doctoral Thesis",
+              status: latestSub.status,
+              currentVersion: latestSub.submissionNumber,
+              submittedAt: latestSub.submittedAt ? latestSub.submittedAt.toISOString() : null,
+              currentStage: currentPendingStage?.definition.name ?? null,
+            }
+          : null,
+      };
+    });
+
+    return {
+      scholars,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  }
+
   const whereClause: any = { facultyId: faculty.id };
 
   if (query.status === "current") {
@@ -1705,13 +1941,22 @@ export async function getSupervisorScholars(userId: string, query: ScholarQuery)
   };
 }
 
-export async function getSupervisorScholarHistory(supervisorUserId: string, studentId: string) {
-  const faculty = await prisma.faculty.findUnique({ where: { userId: supervisorUserId } });
+export async function getSupervisorScholarHistory(
+  supervisorUserId: string,
+  studentId: string,
+  actingRole?: string,
+) {
+  const faculty = await prisma.faculty.findUnique({
+    where: { userId: supervisorUserId },
+    include: { department: true },
+  });
   if (!faculty) {
     throw new AppError(403, "You do not have a registered faculty profile", "NOT_FACULTY");
   }
 
-  // Verify that this faculty supervises (or supervised) this scholar
+  const isHod = normalizeRoleCode(actingRole || "") === ROLES.HOD;
+
+  // Verify that this faculty supervises (or supervised) this scholar OR is HOD of the department
   const assignment = await prisma.studentSupervisorAssignment.findFirst({
     where: { facultyId: faculty.id, studentId },
     include: {
@@ -1724,8 +1969,22 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
     },
   });
 
-  if (!assignment) {
+  const student = assignment
+    ? assignment.student
+    : await prisma.student.findUnique({
+        where: { id: studentId },
+        include: {
+          user: { select: { id: true, fullName: true, collegeEmail: true } },
+          department: { select: { code: true, name: true } },
+        },
+      });
+
+  if (!assignment && (!isHod || student?.departmentId !== faculty.departmentId)) {
     throw new AppError(403, "You are not authorized to view this scholar's supervision history", "FORBIDDEN");
+  }
+
+  if (!student) {
+    throw new AppError(404, "Scholar record not found", "SCHOLAR_NOT_FOUND");
   }
 
   const thesis = await prisma.thesis.findUnique({
@@ -1803,21 +2062,21 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
 
   return {
     scholar: {
-      studentId: assignment.studentId,
-      scholarId: assignment.studentId,
-      rollNumber: assignment.student.rollNumber,
-      fullName: assignment.student.user.fullName,
-      email: assignment.student.user.collegeEmail,
-      collegeEmail: assignment.student.user.collegeEmail,
+      studentId: student.id,
+      scholarId: student.id,
+      rollNumber: student.rollNumber,
+      fullName: student.user.fullName,
+      email: student.user.collegeEmail,
+      collegeEmail: student.user.collegeEmail,
       user: {
-        id: assignment.student.user.id,
-        fullName: assignment.student.user.fullName,
-        collegeEmail: assignment.student.user.collegeEmail,
+        id: student.user.id,
+        fullName: student.user.fullName,
+        collegeEmail: student.user.collegeEmail,
       },
-      program: assignment.student.program,
-      department: assignment.student.department,
-      supervisionStartDate: assignment.startDate,
-      supervisionEndDate: assignment.endDate,
+      program: student.program,
+      department: student.department,
+      supervisionStartDate: assignment?.startDate ?? null,
+      supervisionEndDate: assignment?.endDate ?? null,
     },
     thesis: thesis
       ? {

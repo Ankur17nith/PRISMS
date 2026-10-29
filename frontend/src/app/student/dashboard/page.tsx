@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { useAuth } from "@/lib/auth";
 import { api, SubmissionItem } from "@/lib/api";
+import { formatDateTime, formatStatusLabel } from "@/lib/statusHelper";
 
 export default function StudentDashboardPage() {
   const { user } = useAuth();
@@ -112,7 +113,7 @@ export default function StudentDashboardPage() {
                       : "bg-[#edf8ef] text-[#166534]"
                   }`}
                 >
-                  {latestSubmission.status.replace(/_/g, " ")}
+                  {formatStatusLabel(latestSubmission.status)}
                 </span>
               </div>
             </div>
@@ -144,13 +145,7 @@ export default function StudentDashboardPage() {
               <div>
                 <span className="text-[#666]">Submitted On:</span>
                 <p className="font-semibold text-[#171717]">
-                  {latestSubmission.submittedAt
-                    ? new Date(latestSubmission.submittedAt).toLocaleDateString("en-IN", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })
-                    : "Draft"}
+                  {latestSubmission.submittedAt ? formatDateTime(latestSubmission.submittedAt) : "Draft"}
                 </p>
               </div>
               <div>

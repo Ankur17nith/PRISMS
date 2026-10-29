@@ -102,13 +102,26 @@ export function fileExists(storageKey: string): boolean {
   }
 }
 
-/** Create a readable stream from a secure storage key. */
-export function createSecureReadStream(storageKey: string): Readable {
+/** Get the size in bytes of a stored file. */
+export function getSecureFileSize(storageKey: string): number {
   const filePath = getSecureFilePath(storageKey);
   if (!fs.existsSync(filePath)) {
     throw new AppError(404, "Requested thesis file not found in storage", "FILE_NOT_FOUND");
   }
-  return fs.createReadStream(filePath);
+  const stat = fs.statSync(filePath);
+  return stat.size;
+}
+
+/** Create a readable stream from a secure storage key with optional byte range options. */
+export function createSecureReadStream(
+  storageKey: string,
+  options?: { start?: number; end?: number },
+): Readable {
+  const filePath = getSecureFilePath(storageKey);
+  if (!fs.existsSync(filePath)) {
+    throw new AppError(404, "Requested thesis file not found in storage", "FILE_NOT_FOUND");
+  }
+  return fs.createReadStream(filePath, options);
 }
 
 /** Asynchronously remove an abandoned or failed storage file. */

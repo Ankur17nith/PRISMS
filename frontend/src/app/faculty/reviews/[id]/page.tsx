@@ -6,13 +6,13 @@ import { useRouter } from "next/navigation";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { useAuth } from "@/lib/auth";
 import { api, SubmissionItem } from "@/lib/api";
-import { formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
+import { formatDateTime, formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
 import { ThesisBookReader } from "@/components/ThesisBookReader";
 
 export default function FacultyReviewWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { activeRole } = useAuth();
+  const { user, activeRole } = useAuth();
 
   const [submission, setSubmission] = useState<SubmissionItem | null>(null);
   const [eligibleRecipients, setEligibleRecipients] = useState<
@@ -20,10 +20,13 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
   >([]);
   const [selectedRecipientId, setSelectedRecipientId] = useState<string>("");
   const [remarks, setRemarks] = useState("");
+  const [isActionable, setIsActionable] = useState(false);
+  const [currentPendingStage, setCurrentPendingStage] = useState<any>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -35,13 +38,35 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
       try {
         const [sub, recipientsData] = await Promise.all([
           api.getSubmissionDetails(id),
-          api.getEligibleRecipients(id, activeRole || undefined).catch(() => ({ eligibleRecipients: [] })),
+          api.getEligibleRecipients(id, activeRole || undefined).catch(() => ({
+            isActionable: false,
+            currentStage: "",
+            eligibleRecipients: [],
+          })),
         ]);
         setSubmission(sub);
         setEligibleRecipients(recipientsData.eligibleRecipients || []);
         if (recipientsData.eligibleRecipients && recipientsData.eligibleRecipients.length > 0) {
           setSelectedRecipientId(recipientsData.eligibleRecipients[0].userId);
         }
+
+        const stagesList = (sub as any).stages || [];
+        const pendingStage = stagesList.find((s: any) => s.status === "PENDING");
+        setCurrentPendingStage(pendingStage || null);
+
+        const hasPendingAssignment = pendingStage?.assignments?.some((a: any) => {
+          const rId = a.reviewerId || a.reviewerUserId || a.reviewer?.id;
+          const isUser = rId === user?.id;
+          const isPending = a.status === "ASSIGNED" || a.status === "ACCEPTED" || a.status === "PENDING";
+          return isUser && isPending;
+        });
+
+        const canAct = Boolean(
+          (sub.status === "SUBMITTED" || sub.status === "IN_REVIEW" || sub.status === "UNDER_REVIEW") &&
+          (hasPendingAssignment || recipientsData.isActionable) &&
+          recipientsData.isActionable !== false
+        );
+        setIsActionable(canAct);
       } catch (err: unknown) {
         if (err instanceof Error) setError(err.message);
       } finally {
@@ -49,7 +74,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
       }
     }
     loadData();
-  }, [id, activeRole]);
+  }, [id, activeRole, user?.id]);
 
   // Handle Forward / Approve
   const handleForward = async () => {
@@ -126,6 +151,39 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
     }
   };
 
+  // Handle Download PDF for authorized supervisors (HOD strictly prohibited)
+  const handleDownloadPdf = async () => {
+    if (activeRole === "HOD" || !submission) return;
+    setDownloading(true);
+    try {
+      const targetFile = submission.files && submission.files.length > 0 ? submission.files[0] : null;
+      const downloadEndpoint = api.getDownloadUrl(submission.id, targetFile?.id, activeRole || undefined);
+      const res = await fetch(downloadEndpoint, { credentials: "include" });
+      if (!res.ok) {
+        let msg = "Download failed. Institutional access denied.";
+        try {
+          const json = await res.json();
+          if (json?.error?.message) msg = json.error.message;
+        } catch {}
+        setError(msg);
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = targetFile?.originalFileName || `${submission.submissionReference}_v${submission.currentVersion}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: unknown) {
+      setError("Error downloading document: " + (err instanceof Error ? err.message : "Network error"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   if (loading) {
     return (
       <ApplicationShell portalType="faculty" breadcrumb="Faculty portal / Review Workspace">
@@ -186,6 +244,41 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              href={`/faculty/thesis/reader/${id}`}
+              className="bg-[#171717] hover:bg-[#333] text-white text-[12px] font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5 shadow-sm"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              <span>Open in Reader</span>
+            </Link>
+
+            {activeRole === "HOD" ? (
+              <span
+                title="NIT Hamirpur regulations restrict thesis file downloading in HOD review mode"
+                className="bg-[#3e341f] border border-[#856404]/50 text-[#e6b800] text-[11px] font-bold px-2.5 py-1.5 rounded flex items-center gap-1.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span>View-Only Mode</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={downloading}
+                aria-label="Download Thesis PDF"
+                className="bg-[#16a34a] hover:bg-[#15803d] disabled:opacity-50 text-white font-bold text-[12px] px-3 py-1.5 rounded transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>{downloading ? "Downloading..." : "Download PDF"}</span>
+              </button>
+            )}
+
             <span className="font-mono text-[13px] font-bold text-[#171717]">
               {submission?.submissionReference || "TH-2026-001"} (v{submission?.currentVersion || 1})
             </span>
@@ -212,7 +305,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
         {/* 2-Column Review Layout matching Figma 113:2713 */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Thesis Document Book Reader */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7 min-w-0 space-y-6">
             {submission && (
               <ThesisBookReader
                 submissionId={submission.id}
@@ -224,97 +317,191 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
             )}
 
             {/* Version History info panel */}
-            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm">
-              <h3 className="font-bold text-[14.5px] text-[#171717] mb-2">Version History & Retained Records</h3>
-              <p className="text-[12.5px] text-[#666] mb-3">
-                All previous versions are permanently preserved. Current canonical version: v{submission?.currentVersion}.
+            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-3">
+              <h3 className="font-bold text-[14.5px] text-[#171717] border-b border-[#f2f2f0] pb-2">
+                Version History & Retained Records
+              </h3>
+              <p className="text-[12.5px] text-[#666]">
+                All historical thesis versions are retained indefinitely in the institutional repository.
               </p>
               <div className="divide-y divide-[#f2f2f0] text-[12.5px]">
-                <div className="py-2 flex justify-between">
-                  <span className="font-bold text-[#171717]">Version {submission?.currentVersion} (Current)</span>
+                <div className="py-2 flex justify-between items-center">
+                  <div>
+                    <span className="font-bold text-[#171717]">Version {submission?.currentVersion} (Current)</span>
+                    <p className="text-[11px] text-[#666]">
+                      Submitted: {submission?.submittedAt ? formatDateTime(submission.submittedAt) : "N/A"}
+                    </p>
+                  </div>
                   <span className="text-[#166534] font-semibold">{submission?.status}</span>
                 </div>
+                {latestFile && (
+                  <div className="py-2 text-[11.5px] text-[#666] space-y-1">
+                    <p>
+                      <strong className="text-[#171717]">File:</strong> {latestFile.originalFileName} ({(latestFile.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB)
+                    </p>
+                    {latestFile.sha256Checksum && (
+                      <p className="font-mono text-[10.5px] truncate text-[#888]">
+                        <strong className="text-[#171717]">SHA-256:</strong> {latestFile.sha256Checksum}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Right Column: Decision Form and Authority Routing */}
-          <div className="lg:col-span-5 space-y-6">
-            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
-              <div className="border-b border-[#f2f2f0] pb-2">
-                <h3 className="font-bold text-[16px] text-[#171717]">Review Decision & Actions</h3>
-                <p className="text-[12px] text-[#666]">
-                  Select decision and authorized recipient path according to institutional ordinances.
-                </p>
-              </div>
+          {/* Right Column: Decision Form OR Institutional Tracking View */}
+          <div className="lg:col-span-5 min-w-0 space-y-6">
+            {isActionable ? (
+              <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
+                <div className="border-b border-[#f2f2f0] pb-2">
+                  <h3 className="font-bold text-[16px] text-[#171717]">Review Decision & Actions</h3>
+                  <p className="text-[12px] text-[#666]">
+                    Select decision and authorized recipient path according to institutional ordinances.
+                  </p>
+                </div>
 
-              {/* Dynamic Recipient Routing (only for forwarding) */}
-              {eligibleRecipients.length > 0 && (
+                {/* Dynamic Recipient Routing (only for forwarding) */}
+                {eligibleRecipients.length > 0 && (
+                  <div>
+                    <label className="block text-[12.5px] font-bold text-[#171717] mb-1">
+                      Route to Recipient (Next Authority) *
+                    </label>
+                    <select
+                      value={selectedRecipientId}
+                      onChange={(e) => setSelectedRecipientId(e.target.value)}
+                      className="w-full bg-[#f7f7f6] border border-[#e2e2df] rounded-[6px] px-3 py-2 text-[13px] text-[#171717] focus:outline-none focus:border-[#daa32f]"
+                    >
+                      {eligibleRecipients.map((rec) => (
+                        <option key={rec.userId} value={rec.userId}>
+                          {rec.fullName} — {rec.roleCode} {rec.designation ? `(${rec.designation})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Remarks / Comments */}
                 <div>
                   <label className="block text-[12.5px] font-bold text-[#171717] mb-1">
-                    Route to Recipient (Next Authority) *
+                    Review Remarks & Feedback *
                   </label>
-                  <select
-                    value={selectedRecipientId}
-                    onChange={(e) => setSelectedRecipientId(e.target.value)}
+                  <textarea
+                    rows={4}
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Enter remarks for forward, or required revisions for return/rejection..."
                     className="w-full bg-[#f7f7f6] border border-[#e2e2df] rounded-[6px] px-3 py-2 text-[13px] text-[#171717] focus:outline-none focus:border-[#daa32f]"
-                  >
-                    {eligibleRecipients.map((rec) => (
-                      <option key={rec.userId} value={rec.userId}>
-                        {rec.fullName} — {rec.roleCode} {rec.designation ? `(${rec.designation})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <p className="text-[11px] text-[#666] mt-1">
+                    Remarks are mandatory when returning for revision or rejecting.
+                  </p>
                 </div>
-              )}
 
-              {/* Remarks / Comments */}
-              <div>
-                <label className="block text-[12.5px] font-bold text-[#171717] mb-1">
-                  Review Remarks & Feedback *
-                </label>
-                <textarea
-                  rows={4}
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="Enter remarks for forward, or required revisions for return/rejection..."
-                  className="w-full bg-[#f7f7f6] border border-[#e2e2df] rounded-[6px] px-3 py-2 text-[13px] text-[#171717] focus:outline-none focus:border-[#daa32f]"
-                />
-                <p className="text-[11px] text-[#666] mt-1">
-                  Remarks are mandatory when returning for revision or rejecting.
-                </p>
+                {/* Decision Action Buttons matching Figma */}
+                <div className="space-y-2.5 pt-2">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleForward}
+                    className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-2.5 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer shadow-sm"
+                  >
+                    {actionLoading ? "Processing..." : "Approve & Forward to Next Authority"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleReturn}
+                    className="w-full bg-white hover:bg-[#fff7e6] border border-[#daa32f] text-[#8a570d] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
+                  >
+                    Return to Scholar for Revision
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleReject}
+                    className="w-full bg-white hover:bg-[#fff1ef] border border-[#b42318] text-[#b42318] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
+                  >
+                    Formal Rejection
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
+                <div className="border-b border-[#f2f2f0] pb-2">
+                  <h3 className="font-bold text-[16px] text-[#171717]">Workflow Status & Authority Tracking</h3>
+                  <p className="text-[12px] text-[#666]">
+                    Submission record is displayed in institutional tracking mode.
+                  </p>
+                </div>
 
-              {/* Decision Action Buttons matching Figma */}
-              <div className="space-y-2.5 pt-2">
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleForward}
-                  className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-2.5 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer shadow-sm"
-                >
-                  {actionLoading ? "Processing..." : "Approve & Forward to Next Authority"}
-                </button>
+                <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-[6px] p-4 text-[12.5px] text-[#0369a1] space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-[#0c4a6e]">
+                    <svg className="w-4 h-4 text-[#0284c7]" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+                    </svg>
+                    <span>
+                      Current Stage:{" "}
+                      {currentPendingStage?.stageName ||
+                        currentPendingStage?.stageDefinition?.name ||
+                        currentPendingStage?.definition?.name ||
+                        currentPendingStage?.stageCode ||
+                        (submission?.status === "APPROVED" ? "Approved" : "Under Evaluation")}
+                    </span>
+                  </div>
+                  <p className="leading-relaxed text-[#0284c7]">
+                    {submission?.status === "APPROVED"
+                      ? "This dissertation submission has completed all institutional review stages and received final Senate approval."
+                      : submission?.status === "REJECTED"
+                      ? "This dissertation submission was formally rejected in institutional review."
+                      : (submission?.stages || []).some(
+                          (s: any) =>
+                            s.status === "COMPLETED" &&
+                            s.assignments?.some(
+                              (a: any) => (a.reviewerId || a.reviewerUserId || a.reviewer?.id) === user?.id
+                            )
+                        )
+                      ? `Your evaluation has been completed and forwarded. This submission is currently undergoing evaluation at stage: ${
+                          currentPendingStage?.stageName || currentPendingStage?.stageDefinition?.name || "Next Authority"
+                        }.`
+                      : `This submission is currently awaiting evaluation at stage: ${
+                          currentPendingStage?.stageName || currentPendingStage?.stageDefinition?.name || "Academic Review"
+                        }. You are viewing this record in institutional tracking mode.`}
+                  </p>
+                  {currentPendingStage?.assignments && currentPendingStage.assignments.length > 0 && (
+                    <div className="pt-2 border-t border-[#bae6fd]/60 text-[11.5px]">
+                      <span className="font-bold text-[#0c4a6e]">Designated Reviewer: </span>
+                      <span>
+                        {currentPendingStage.assignments
+                          .map((a: any) => a.reviewerName || a.reviewer?.fullName || a.reviewerRole)
+                          .join(", ")}
+                      </span>
+                    </div>
+                  )}
+                </div>
 
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleReturn}
-                  className="w-full bg-white hover:bg-[#fff7e6] border border-[#daa32f] text-[#8a570d] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
-                >
-                  Return to Scholar for Revision
-                </button>
-
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleReject}
-                  className="w-full bg-white hover:bg-[#fff1ef] border border-[#b42318] text-[#b42318] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
-                >
-                  Formal Rejection
-                </button>
+                {/* Prior Comments & Recorded Reviewer Decisions */}
+                {submission?.decisions && submission.decisions.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <h4 className="text-[12px] font-bold text-[#171717]">Recorded Review Decisions:</h4>
+                    {submission.decisions.map((dec) => (
+                      <div key={dec.id} className="p-3 bg-[#fafaf9] rounded border border-[#e2e2df] text-[12px]">
+                        <div className="flex justify-between font-bold text-[#171717] mb-0.5">
+                          <span>{dec.reviewer?.fullName || "Reviewer"}</span>
+                          <span className={dec.decision === "APPROVE" ? "text-[#166534]" : "text-[#b42318]"}>
+                            {dec.decision}
+                          </span>
+                        </div>
+                        <p className="text-[10.5px] text-[#888]">{formatDateTime(dec.createdAt)}</p>
+                        {dec.remarks && <p className="text-[#666] text-[11.5px] mt-1 italic">"{dec.remarks}"</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
             {/* Workflow Stage Timeline */}
             <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-3">
@@ -325,7 +512,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
                 {submission?.stages?.map((st, i) => (
                   <div key={st.id} className="flex items-center justify-between">
                     <span className="font-medium text-[#171717]">
-                      {i + 1}. {st.stageDefinition?.name || st.stageDefinition?.code}
+                      {i + 1}. {st.stageDefinition?.name || (st as any).stageName || st.stageDefinition?.code || (st as any).stageCode}
                     </span>
                     <span
                       className={`font-bold text-[11px] px-2 py-0.5 rounded ${

@@ -60,6 +60,10 @@ export interface SubmissionItem {
     assignments?: Array<{
       id: string;
       status: string;
+      reviewerId?: string;
+      reviewerUserId?: string;
+      reviewerRole?: string;
+      reviewerName?: string;
       reviewer: { id: string; fullName: string; collegeEmail: string };
     }>;
   }>;
@@ -223,7 +227,6 @@ const MOCK_USERS: Record<string, AuthUser> = {
     accountStatus: "ACTIVE",
     roles: [
       { id: "r-sdpc", code: "CHAIRPERSON_SDPC", name: "SDPC Chairperson", scopeType: "INSTITUTE" },
-      { id: "r-sdpc-alias", code: "SDPC", name: "SDPC Chairperson", scopeType: "INSTITUTE" },
     ],
     facultyProfile: {
       id: "fac-5",
@@ -238,8 +241,7 @@ const MOCK_USERS: Record<string, AuthUser> = {
     fullName: "Prof. Sanjay Gupta",
     accountStatus: "ACTIVE",
     roles: [
-      { id: "r-dean", code: "DEAN_ACADEMICS", name: "Dean Academics", scopeType: "INSTITUTE" },
-      { id: "r-dean-alias", code: "DEAN", name: "Dean Academics", scopeType: "INSTITUTE" },
+      { id: "r-dean", code: "DEAN_ACADEMICS", name: "Dean of Academic Affairs", scopeType: "INSTITUTE" },
     ],
     facultyProfile: {
       id: "fac-6",
@@ -255,7 +257,6 @@ const MOCK_USERS: Record<string, AuthUser> = {
     accountStatus: "ACTIVE",
     roles: [
       { id: "r-senate", code: "CHAIRPERSON_SENATE", name: "Chairperson Senate / Director", scopeType: "INSTITUTE" },
-      { id: "r-chairman-alias", code: "CHAIRMAN", name: "Chairman Senate", scopeType: "INSTITUTE" },
     ],
     facultyProfile: {
       id: "fac-7",
@@ -628,8 +629,14 @@ export const api = {
       const res = await request<any>("/theses/my");
       const list = Array.isArray(res) ? res : Array.isArray(res?.submissions) ? res.submissions : [];
       return list.map((item: any) => normalizeSubmission(item));
-    } catch {
-      return [];
+    } catch (err) {
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("prisms_demo_user");
+        if (stored) {
+          return MOCK_SUBMISSIONS.map((item) => normalizeSubmission(item));
+        }
+      }
+      throw err;
     }
   },
 
@@ -692,30 +699,59 @@ export const api = {
 
   getEligibleRecipients: async (submissionId: string, role?: string) => {
     try {
-      return await request<{
+      const res = await request<{
+        isActionable?: boolean;
         currentStage: string;
-        targetStage: string | null;
-        eligibleRecipients: Array<{
+        targetStage?: string | null;
+        allowedSelection?: string;
+        recipients?: Array<{
+          userId: string;
+          fullName: string;
+          email?: string;
+          collegeEmail?: string;
+          roleCode: string;
+          roleName?: string;
+          designation?: string;
+          departmentName?: string | null;
+        }>;
+        eligibleRecipients?: Array<{
           userId: string;
           fullName: string;
           collegeEmail: string;
           roleCode: string;
           designation?: string;
         }>;
-      }>(`/theses/${submissionId}/eligible-recipients${role ? `?role=${role}` : ""}`);
+      }>(`/theses/${submissionId}/recipients${role ? `?role=${role}` : ""}`);
+
+      const rawList = res.eligibleRecipients || res.recipients || [];
+      const listMap = new Map<string, { userId: string; fullName: string; collegeEmail: string; roleCode: string; designation?: string }>();
+      for (const r of rawList) {
+        if (!listMap.has(r.userId)) {
+          listMap.set(r.userId, {
+            userId: r.userId,
+            fullName: r.fullName,
+            collegeEmail: r.collegeEmail || (r as any).email || "",
+            roleCode: r.roleCode,
+            designation: r.designation || (r as any).roleName,
+          });
+        }
+      }
+      const list = Array.from(listMap.values());
+
+      return {
+        isActionable: res.isActionable !== false,
+        currentStage: res.currentStage || "",
+        targetStage: res.targetStage || null,
+        allowedSelection: res.allowedSelection || "single",
+        eligibleRecipients: list,
+      };
     } catch {
       return {
-        currentStage: "Supervisor Review",
-        targetStage: "HOD Review",
-        eligibleRecipients: [
-          {
-            userId: "demo-hod-1",
-            fullName: "Prof. Anil Verma",
-            collegeEmail: "hod.cse@example.test",
-            roleCode: "HOD",
-            designation: "Professor & HOD",
-          },
-        ],
+        isActionable: false,
+        currentStage: "",
+        targetStage: null,
+        allowedSelection: "none",
+        eligibleRecipients: [],
       };
     }
   },
@@ -763,9 +799,13 @@ export const api = {
   },
 
   // Supervisor Scholars
-  getMyScholars: async (status?: string): Promise<ScholarItem[]> => {
+  getMyScholars: async (role?: string, status?: string): Promise<ScholarItem[]> => {
     try {
-      const res = await request<any>(`/theses/supervisor/scholars${status ? `?status=${status}` : ""}`);
+      const params = new URLSearchParams();
+      if (role) params.set("role", role);
+      if (status) params.set("status", status);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const res = await request<any>(`/theses/supervisor/scholars${qs}`);
       const rawList = Array.isArray(res) ? res : Array.isArray(res?.scholars) ? res.scholars : [];
       return rawList.map((s: any) => {
         const id = s.scholarId || s.studentId || "";
@@ -798,7 +838,7 @@ export const api = {
     }
   },
 
-  getScholarHistory: async (scholarId: string) => {
+  getScholarHistory: async (scholarId: string, role?: string) => {
     if (!scholarId || scholarId === "undefined") {
       return {
         scholar: null,
@@ -806,7 +846,7 @@ export const api = {
       };
     }
     try {
-      const res = await request<any>(`/theses/supervisor/scholars/${scholarId}`);
+      const res = await request<any>(`/theses/supervisor/scholars/${scholarId}${role ? `?role=${role}` : ""}`);
       const rawScholar = res?.scholar || null;
       let scholarObj = null;
       if (rawScholar) {
@@ -849,9 +889,20 @@ export const api = {
   },
 
   // Document URLs
-  getViewUrl: (submissionId: string, fileScanId?: string) =>
-    `/theses/${submissionId}/file/view`,
+  getViewUrl: (submissionId: string, fileScanId?: string, role?: string) => {
+    const params = new URLSearchParams();
+    if (fileScanId) params.set("fileId", fileScanId);
+    if (role) params.set("role", role);
+    const qs = params.toString();
+    return `/theses/${submissionId}/file/view${qs ? `?${qs}` : ""}`;
+  },
 
-  getDownloadUrl: (submissionId: string, fileScanId?: string) =>
-    `/theses/${submissionId}/file/download`,
+  getDownloadUrl: (submissionId: string, fileScanId?: string, role?: string) => {
+    const params = new URLSearchParams();
+    if (fileScanId) params.set("fileId", fileScanId);
+    if (role) params.set("role", role);
+    const qs = params.toString();
+    return `/theses/${submissionId}/file/download${qs ? `?${qs}` : ""}`;
+  },
 };
+

@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { ThesisBookReader } from "@/components/ThesisBookReader";
 import { api, SubmissionItem } from "@/lib/api";
-import { formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
+import { formatDateTime, formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
 
 function SubmissionDetailsContent() {
   const searchParams = useSearchParams();
@@ -19,14 +19,20 @@ function SubmissionDetailsContent() {
     async function load() {
       try {
         let sub: SubmissionItem;
-        if (idFromQuery && idFromQuery !== "undefined") {
-          sub = await api.getSubmissionDetails(idFromQuery);
+        const isValidUuid =
+          Boolean(idFromQuery) &&
+          idFromQuery !== "undefined" &&
+          idFromQuery !== "null" &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idFromQuery!);
+
+        if (isValidUuid) {
+          sub = await api.getSubmissionDetails(idFromQuery!);
         } else {
           const list = await api.getMySubmissions();
           if (list && list.length > 0) {
             sub = await api.getSubmissionDetails(list[0].id);
           } else {
-            setError("No thesis submissions found.");
+            setError("No thesis submissions found for your doctoral account.");
             return;
           }
         }
@@ -76,6 +82,9 @@ function SubmissionDetailsContent() {
             <p className="text-[13px] text-[#666]">
               Reference: <span className="font-bold text-[#171717]">{submission.submissionReference}</span> ·
               Version <span className="font-bold text-[#171717]">{submission.currentVersion}</span>
+              {submission.submittedAt && (
+                <> · Submitted: <span className="font-semibold text-[#171717]">{formatDateTime(submission.submittedAt)}</span></>
+              )}
             </p>
           </div>
 
@@ -85,6 +94,16 @@ function SubmissionDetailsContent() {
             >
               {formatStatusLabel(submission.status)}
             </span>
+
+            <Link
+              href={`/student/thesis/reader?id=${submission.id}`}
+              className="bg-[#171717] hover:bg-[#333] text-white text-[12px] font-bold px-3 py-1.5 rounded-[6px] transition flex items-center gap-1.5 shadow-sm"
+            >
+              <svg className="w-3.5 h-3.5 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+              <span>Open in Dedicated Reader</span>
+            </Link>
 
             {submission.status === "REVISION_REQUIRED" && (
               <Link
@@ -114,7 +133,7 @@ function SubmissionDetailsContent() {
         {/* 2-column layout: Left = Stage timeline & remarks, Right = Embedded PDF viewer */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Timeline & Released Feedback */}
-          <div className="lg:col-span-5 space-y-6">
+          <div className="lg:col-span-5 min-w-0 space-y-6">
             {/* Timeline */}
             <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
               <h3 className="font-bold text-[15px] text-[#171717] border-b border-[#f2f2f0] pb-2">
@@ -166,11 +185,7 @@ function SubmissionDetailsContent() {
                       <div className="flex justify-between items-center mb-1">
                         <span className="font-bold text-[#171717]">{dec.reviewer.fullName}</span>
                         <span className="text-[10.5px] text-[#666]">
-                          {new Date(dec.createdAt).toLocaleDateString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })}
+                          {formatDateTime(dec.createdAt)}
                         </span>
                       </div>
                       <p className="text-[#303030] whitespace-pre-wrap">{dec.remarks || "No written remarks recorded."}</p>
@@ -186,7 +201,7 @@ function SubmissionDetailsContent() {
           </div>
 
           {/* Right Column: Secure Document Viewer */}
-          <div className="lg:col-span-7 space-y-4">
+          <div className="lg:col-span-7 min-w-0 space-y-4">
             {submission && (
               <ThesisBookReader
                 submissionId={submission.id}

@@ -3,7 +3,7 @@ import { prisma } from "../lib/prisma.js";
 import { AppError } from "../lib/errors.js";
 import { audit } from "../lib/audit.js";
 import { verifyAccessToken } from "../modules/auth/auth.tokens.js";
-import { getActiveRoles } from "../modules/auth/auth.service.js";
+import { getActiveRoles, normalizeRoleCode } from "../modules/auth/auth.service.js";
 
 export type AuthContext = {
   userId: string;
@@ -61,7 +61,8 @@ export const requireRole =
   async (req, _res, next) => {
     const auth = req.auth;
     if (!auth) throw new AppError(401, "Authentication required", "UNAUTHENTICATED");
-    if (!auth.roles.some((r) => codes.includes(r.code))) {
+    const normalizedCodes = codes.map((c) => normalizeRoleCode(c));
+    if (!auth.roles.some((r) => normalizedCodes.includes(normalizeRoleCode(r.code)))) {
       await audit({
         actorUserId: auth.userId,
         eventType: "authz.role_check",

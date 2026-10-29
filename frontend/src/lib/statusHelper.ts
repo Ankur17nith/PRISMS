@@ -110,15 +110,24 @@ export function normalizeSubmission(raw: any): SubmissionItem {
             name: st.stageName || "Academic Review",
           },
           assignments: Array.isArray(st.assignments)
-            ? st.assignments.map((a: any) => ({
-                id: a.id || `assign-${Date.now()}`,
-                status: a.assignmentStatus || a.status || "PENDING",
-                reviewer: {
-                  id: a.reviewer?.id || a.reviewerUserId || "",
-                  fullName: a.reviewer?.fullName || a.reviewerRole || "Reviewer",
-                  collegeEmail: a.reviewer?.collegeEmail || "",
-                },
-              }))
+            ? st.assignments.map((a: any) => {
+                const revId = a.reviewer?.id || a.reviewerId || a.reviewerUserId || "";
+                const revName = a.reviewer?.fullName || a.reviewerName || a.reviewerRole || "Reviewer";
+                const revEmail = a.reviewer?.collegeEmail || a.reviewerEmail || "";
+                return {
+                  id: a.id || `assign-${Date.now()}`,
+                  status: a.assignmentStatus || a.status || "PENDING",
+                  reviewerId: revId,
+                  reviewerUserId: revId,
+                  reviewerRole: a.reviewerRole || "",
+                  reviewerName: revName,
+                  reviewer: {
+                    id: revId,
+                    fullName: revName,
+                    collegeEmail: revEmail,
+                  },
+                };
+              })
             : [],
         }))
       : [],
@@ -132,16 +141,73 @@ export function normalizeSubmission(raw: any): SubmissionItem {
           createdAt: f.createdAt || f.uploadedAt || new Date().toISOString(),
         }))
       : [],
+    decisions: Array.isArray(sub.decisions)
+      ? sub.decisions.map((d: any) => ({
+          id: d.id || `dec-${Date.now()}`,
+          decision: d.decision,
+          remarks: d.remarks || d.summary || null,
+          createdAt: d.createdAt || d.decidedAt || new Date().toISOString(),
+          reviewer: {
+            id: d.reviewer?.id || d.reviewerUserId || "",
+            fullName: d.reviewer?.fullName || d.reviewerName || "Reviewer",
+          },
+        }))
+      : [],
     comments: Array.isArray(sub.comments || sub.feedback)
       ? (sub.comments || sub.feedback).map((c: any) => ({
           id: c.id || `comment-${Date.now()}`,
           commentText: c.commentText || c.body || "",
           author: {
-            id: c.author?.id || "",
-            fullName: c.author?.fullName || c.author || "Reviewer",
+            id: c.author?.id || c.authorId || "",
+            fullName: c.author?.fullName || c.authorName || c.author || "Reviewer",
           },
           createdAt: c.createdAt || new Date().toISOString(),
         }))
       : [],
   };
 }
+
+/**
+ * Persisted server timestamp formatter in Indian Standard Time (IST).
+ * Returns formatted date and time with 'IST' suffix, e.g. "29 Oct 2026, 09:31 PM IST".
+ */
+export function formatDateTime(isoString: string | null | undefined): string {
+  if (!isoString) return "N/A";
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return "N/A";
+    return (
+      new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      }).format(d) + " IST"
+    );
+  } catch {
+    return "N/A";
+  }
+}
+
+/**
+ * Formatter for date-only display in IST (e.g., "29 Oct 2026").
+ */
+export function formatDate(isoString: string | null | undefined): string {
+  if (!isoString) return "N/A";
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return "N/A";
+    return new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(d);
+  } catch {
+    return "N/A";
+  }
+}
+

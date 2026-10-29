@@ -319,8 +319,10 @@ function ThesisSubmitContent() {
 
             <div className="border-2 border-dashed border-[#e2e2df] hover:border-[#daa32f] rounded-[8px] p-8 text-center transition bg-[#f7f7f6]">
               <div className="max-w-md mx-auto space-y-3">
-                <div className="w-12 h-12 rounded-full bg-[#fbf3de] text-[#daa32f] flex items-center justify-center mx-auto text-[20px] font-bold">
-                  📄
+                <div className="w-12 h-12 rounded-full bg-[#fbf3de] text-[#daa32f] flex items-center justify-center mx-auto">
+                  <svg className="w-6 h-6 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
                 </div>
                 <div>
                   <label className="cursor-pointer inline-block bg-[#16a34a] hover:bg-[#15803d] text-white text-[13px] font-bold px-4 py-2 rounded-[6px] shadow-sm">

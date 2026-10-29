@@ -3,11 +3,13 @@
 import React, { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { ApplicationShell } from "@/components/ApplicationShell";
+import { useAuth } from "@/lib/auth";
 import { api, SubmissionItem } from "@/lib/api";
-import { formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
+import { formatDateTime, formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
 
 export default function ScholarHistoryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { activeRole } = useAuth();
   const [data, setData] = useState<{ scholar: unknown; submissions: SubmissionItem[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +22,7 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
         return;
       }
       try {
-        const res = await api.getScholarHistory(id);
+        const res = await api.getScholarHistory(id, activeRole || undefined);
         setData(res);
       } catch (err: unknown) {
         if (err instanceof Error) setError(err.message);
@@ -29,7 +31,7 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
       }
     }
     load();
-  }, [id]);
+  }, [id, activeRole]);
 
   if (loading) {
     return (
@@ -114,8 +116,17 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
                         {formatStatusLabel(sub.status)}
                       </span>
                       <Link
+                        href={`/faculty/thesis/reader/${sub.id}`}
+                        className="bg-[#171717] hover:bg-[#333] text-white text-[12px] font-bold px-3 py-1 rounded transition flex items-center gap-1.5 shadow-sm"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                        <span>View in Reader</span>
+                      </Link>
+                      <Link
                         href={`/faculty/reviews/${sub.id}`}
-                        className="bg-[#16a34a] hover:bg-[#15803d] text-white text-[12px] font-bold px-3 py-1 rounded"
+                        className="bg-[#16a34a] hover:bg-[#15803d] text-white text-[12px] font-bold px-3 py-1 rounded shadow-sm"
                       >
                         Inspect Review Workspace →
                       </Link>
@@ -124,15 +135,9 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[12px] text-[#666]">
                     <div>
-                      <span>Submitted Date: </span>
+                      <span>Submitted Date (IST): </span>
                       <span className="font-semibold text-[#171717]">
-                        {sub.submittedAt
-                          ? new Date(sub.submittedAt).toLocaleDateString("en-IN", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            })
-                          : "Draft"}
+                        {sub.submittedAt ? formatDateTime(sub.submittedAt) : "Draft"}
                       </span>
                     </div>
                     <div>

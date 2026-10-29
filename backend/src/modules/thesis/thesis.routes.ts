@@ -4,7 +4,7 @@ import { env } from "../../config/env.js";
 import { AppError } from "../../lib/errors.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
-import { createSecureReadStream, savePrivateThesisPdf } from "../../lib/storage.js";
+import { createSecureReadStream, getSecureFileSize, savePrivateThesisPdf } from "../../lib/storage.js";
 import {
   draftMetadataSchema,
   forwardReviewSchema,
@@ -127,11 +127,19 @@ router.get("/queue", requireAuth, async (req, res) => {
   res.json({ tasks });
 });
 
-// Get authorized forwarding recipients for current stage
-router.get("/:submissionId/recipients", requireAuth, async (req, res) => {
-  const recipients = await service.getAuthorizedRecipients(uuidParam(req.params.submissionId, "submission"), req.auth!.userId);
-  res.json(recipients);
-});
+// Get authorized forwarding recipients for current stage (supports both /recipients and /eligible-recipients)
+router.get(
+  ["/:submissionId/recipients", "/:submissionId/eligible-recipients"],
+  requireAuth,
+  async (req, res) => {
+    const recipients = await service.getAuthorizedRecipients(
+      uuidParam(req.params.submissionId, "submission"),
+      req.auth!.userId,
+      typeof req.query.role === "string" ? req.query.role : undefined,
+    );
+    res.json(recipients);
+  },
+);
 
 // Forward thesis to next stage / recipients
 router.post(
@@ -170,7 +178,7 @@ router.post(
 // Document Viewing & Download Endpoints
 // =============================================================================
 
-// Inline in-portal PDF viewer stream (authenticated, no public URLs)
+// Inline in-portal PDF viewer stream (authenticated, no public URLs, byte-range enabled)
 router.get("/:submissionId/file/view", requireAuth, async (req, res) => {
   const file = await service.authorizeDocumentAccess(
     uuidParam(req.params.submissionId, "submission"),
@@ -180,19 +188,58 @@ router.get("/:submissionId/file/view", requireAuth, async (req, res) => {
     req.query.fileId as string | undefined,
   );
 
+  const totalSize = getSecureFileSize(file.storageKey);
+
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${file.originalFilename}"`);
   res.setHeader("Cache-Control", "private, no-store, must-revalidate");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Accept-Ranges", "bytes");
 
-  const stream = createSecureReadStream(file.storageKey);
-  stream.on("error", (err) => {
-    console.error("Stream error during inline viewing:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: { message: "Failed to stream document", code: "STREAM_ERROR" } });
+  const rangeHeader = req.headers.range;
+  if (rangeHeader && rangeHeader.startsWith("bytes=")) {
+    const parts = rangeHeader.replace(/bytes=/, "").split("-");
+    const startStr = parts[0] ?? "";
+    const endStr = parts[1] ?? "";
+
+    let start = startStr ? parseInt(startStr, 10) : NaN;
+    let end = endStr ? parseInt(endStr, 10) : totalSize - 1;
+
+    if (isNaN(start)) {
+      start = endStr ? totalSize - parseInt(endStr, 10) : 0;
+      end = totalSize - 1;
     }
-  });
-  stream.pipe(res);
+
+    if (start >= totalSize || end >= totalSize || start > end || start < 0) {
+      res.setHeader("Content-Range", `bytes */${totalSize}`);
+      res.status(416).end();
+      return;
+    }
+
+    const chunkSize = end - start + 1;
+    res.status(206);
+    res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
+    res.setHeader("Content-Length", chunkSize.toString());
+
+    const stream = createSecureReadStream(file.storageKey, { start, end });
+    stream.on("error", (err) => {
+      console.error("Stream error during range viewing:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: { message: "Failed to stream document", code: "STREAM_ERROR" } });
+      }
+    });
+    stream.pipe(res);
+  } else {
+    res.setHeader("Content-Length", totalSize.toString());
+    const stream = createSecureReadStream(file.storageKey);
+    stream.on("error", (err) => {
+      console.error("Stream error during inline viewing:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: { message: "Failed to stream document", code: "STREAM_ERROR" } });
+      }
+    });
+    stream.pipe(res);
+  }
 });
 
 // Dedicated document download (HOD strictly prohibited!)
@@ -205,10 +252,14 @@ router.get("/:submissionId/file/download", requireAuth, async (req, res) => {
     req.query.fileId as string | undefined,
   );
 
+  const totalSize = getSecureFileSize(file.storageKey);
+
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${file.originalFilename}"`);
   res.setHeader("Cache-Control", "private, no-store, must-revalidate");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Length", totalSize.toString());
+  res.setHeader("Accept-Ranges", "bytes");
 
   const stream = createSecureReadStream(file.storageKey);
   stream.on("error", (err) => {
@@ -224,19 +275,27 @@ router.get("/:submissionId/file/download", requireAuth, async (req, res) => {
 // Supervisor Scholar Tracking Endpoints
 // =============================================================================
 
-// List current and completed scholars for Supervisor
+// List current and completed scholars for Supervisor or HOD
 router.get("/supervisor/scholars", requireAuth, async (req, res) => {
   const parsed = scholarQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     throw new AppError(400, "Invalid query parameters", "VALIDATION_ERROR");
   }
-  const result = await service.getSupervisorScholars(req.auth!.userId, parsed.data);
+  const result = await service.getSupervisorScholars(
+    req.auth!.userId,
+    parsed.data,
+    typeof req.query.role === "string" ? req.query.role : undefined,
+  );
   res.json(result);
 });
 
-// Get detailed submission and version history for a specific supervised scholar
+// Get detailed submission and version history for a specific supervised or departmental scholar
 router.get("/supervisor/scholars/:studentId", requireAuth, async (req, res) => {
-  const result = await service.getSupervisorScholarHistory(req.auth!.userId, uuidParam(req.params.studentId, "scholar"));
+  const result = await service.getSupervisorScholarHistory(
+    req.auth!.userId,
+    uuidParam(req.params.studentId, "scholar"),
+    typeof req.query.role === "string" ? req.query.role : undefined,
+  );
   res.json(result);
 });
 
