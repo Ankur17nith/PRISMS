@@ -1,0 +1,1011 @@
+openapi: 3.1.0
+info:
+  title: PRISMS REST API
+  description: >
+    Official REST API specification for PRISMS (PhD Research & Institutional Scholars Management System)
+    at the National Institute of Technology Hamirpur (NIT Hamirpur).
+  version: 1.0.0
+  contact:
+    name: Office of Dean (Academic), NIT Hamirpur
+    email: prisms-support@nith.ac.in
+servers:
+  - url: http://localhost:5000
+    description: Development backend server
+paths:
+  /:
+    get:
+      summary: Root health check and service banner
+      description: Returns service metadata.
+      responses:
+        '200':
+          description: Service information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: PRISMS API
+                  message:
+                    type: string
+                    example: PhD Research and Scholar Administration Portal API
+
+  /health/db:
+    get:
+      summary: Database connectivity health check
+      description: Verifies direct PostgreSQL database query execution.
+      responses:
+        '200':
+          description: Database is connected and healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  database:
+                    type: string
+                    example: connected
+        '503':
+          description: Database is unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: error
+                  database:
+                    type: string
+                    example: unavailable
+
+  /auth/signup:
+    post:
+      summary: Register a new scholar or faculty user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, fullName]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                fullName:
+                  type: string
+      responses:
+        '202':
+          description: Registration request accepted; verification email dispatched
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /auth/verify-email:
+    post:
+      summary: Verify account email address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Email verified successfully
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/login:
+    post:
+      summary: Authenticate user credentials and establish session
+      description: Sets secure HTTP-only cookie `access_token` and returns authenticated user profile with roles.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/refresh:
+    post:
+      summary: Refresh authentication session token
+      responses:
+        '204':
+          description: Session refreshed successfully
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /auth/logout:
+    post:
+      summary: Terminate current session
+      responses:
+        '204':
+          description: Current session logged out and cookie cleared
+
+  /auth/logout-all:
+    post:
+      summary: Revoke all active sessions across all devices
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '204':
+          description: All active sessions revoked
+
+  /auth/me:
+    get:
+      summary: Retrieve current authenticated user profile
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Authenticated user details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /theses/draft:
+    get:
+      summary: Retrieve current scholar thesis draft and supervisor context
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Thesis draft and scholar details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThesisDraftResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+    put:
+      summary: Save or update thesis draft metadata
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DraftMetadataInput'
+      responses:
+        '200':
+          description: Draft saved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thesis:
+                    type: object
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /theses/upload:
+    post:
+      summary: Securely upload private thesis PDF file
+      description: Uploads PDF document into storage. Validates %PDF- header magic bytes, calculates SHA-256 checksum, and enforces size limit.
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: File uploaded and validated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  file:
+                    $ref: '#/components/schemas/UploadedFile'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          description: File exceeds maximum allowed size (default 20 MiB)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+
+  /theses/submit:
+    post:
+      summary: Formally submit dissertation draft for institutional review
+      description: Initializes Stage 1 (Supervisor Review) and locks draft from further concurrent edits.
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SubmitThesisInput'
+      responses:
+        '201':
+          description: Thesis submitted and routed to Supervisor
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionResult'
+        '409':
+          description: Scholar already has an active thesis submission in review
+
+  /theses/resubmit:
+    post:
+      summary: Resubmit a revised dissertation version following a revision request
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResubmitThesisInput'
+      responses:
+        '201':
+          description: Revised version submitted with incremented version number
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+  /theses/my:
+    get:
+      summary: Retrieve all thesis submissions and released review remarks for the authenticated scholar
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Submissions history list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  thesis:
+                    type: object
+                  submissions:
+                    type: array
+                    items:
+                      type: object
+
+  /theses/queue:
+    get:
+      summary: Retrieve faculty review queue across assigned institutional roles
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: query
+          name: role
+          schema:
+            type: string
+          description: Filter tasks by specific role code (e.g. SUPERVISOR, HOD, SDPC, DEAN, SENATE)
+        - in: query
+          name: stage
+          schema:
+            type: string
+          description: Filter tasks by review stage
+      responses:
+        '200':
+          description: Active review queue tasks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tasks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QueueTask'
+
+  /theses/{submissionId}:
+    get:
+      summary: Retrieve detailed submission record, review history, and files
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: submissionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Detailed submission dossier
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubmissionDetail'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+  /theses/{submissionId}/recipients:
+    get:
+      summary: Retrieve deduplicated eligible recipients for forwarding at the current review stage
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: submissionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: role
+          schema:
+            type: string
+          description: Optional active role claiming the forwarding context
+      responses:
+        '200':
+          description: Deduplicated eligible recipients
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EligibleRecipientsResponse'
+
+  /theses/{submissionId}/eligible-recipients:
+    get:
+      summary: Alias for /recipients
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: submissionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: role
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Deduplicated eligible recipients
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EligibleRecipientsResponse'
+
+  /theses/{submissionId}/forward:
+    post:
+      summary: Approve and forward thesis to downstream institutional authority
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: submissionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ForwardInput'
+      responses:
+        '200':
+          description: Submission forwarded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  currentStage:
+                    type: string
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+
+  /theses/{submissionId}/return:
+    post:
+      summary: Return thesis to scholar for mandatory revision
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: submissionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [remarks]
+              properties:
+                remarks:
+                  type: string
+                  minLength: 5
+      responses:
+        '200':
+          description: Submission returned for revision
+
+  /theses/{submissionId}/reject:
+    post:
+      summary: Formally reject thesis submission
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: submissionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [remarks]
+              properties:
+                remarks:
+                  type: string
+                  minLength: 5
+      responses:
+        '200':
+          description: Submission rejected
+
+  /theses/{submissionId}/file/view:
+    get:
+      summary: Stream thesis PDF inline for authenticated portal reader (with HTTP 206 Partial Content byte ranges)
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: submissionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: fileId
+          schema:
+            type: string
+            format: uuid
+          description: Specific thesis file version UUID
+        - in: query
+          name: role
+          schema:
+            type: string
+          description: Claimed active role
+        - in: header
+          name: X-Active-Role
+          schema:
+            type: string
+          description: Active role context header
+        - in: header
+          name: Range
+          schema:
+            type: string
+            example: bytes=0-65535
+          description: Standard HTTP byte-range request header for PDF.js streaming
+      responses:
+        '200':
+          description: Full PDF binary stream
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/pdf
+            Content-Disposition:
+              schema:
+                type: string
+                example: inline; filename="dissertation.pdf"
+            Accept-Ranges:
+              schema:
+                type: string
+                example: bytes
+            Content-Length:
+              schema:
+                type: integer
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: Partial content byte range response
+          headers:
+            Content-Range:
+              schema:
+                type: string
+                example: bytes 0-65535/8303743
+            Content-Length:
+              schema:
+                type: integer
+            Accept-Ranges:
+              schema:
+                type: string
+                example: bytes
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '416':
+          description: Range Not Satisfiable
+
+  /theses/{submissionId}/file/download:
+    get:
+      summary: Download thesis PDF document (STRICT STATUTORY HOD RESTRICTION APPLIES)
+      description: >
+        Downloads the PDF as an attachment.
+        In compliance with NIT Hamirpur statutory ordinances, Head of Department (HOD) accounts
+        are strictly prohibited from downloading thesis files. Requests evaluated in HOD mode are rejected
+        with HTTP 403 DOWNLOAD_FORBIDDEN_FOR_ROLE.
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: submissionId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: fileId
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: role
+          schema:
+            type: string
+        - in: header
+          name: X-Active-Role
+          schema:
+            type: string
+      responses:
+        '200':
+          description: PDF attachment binary stream
+          headers:
+            Content-Disposition:
+              schema:
+                type: string
+                example: attachment; filename="dissertation.pdf"
+            Content-Length:
+              schema:
+                type: integer
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '403':
+          description: Download forbidden for HOD or unauthorized role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorPayload'
+              example:
+                error:
+                  message: In accordance with NIT Hamirpur regulations, Head of Department review access is strictly view-only. File downloads are not permitted.
+                  code: DOWNLOAD_FORBIDDEN_FOR_ROLE
+
+  /theses/supervisor/scholars:
+    get:
+      summary: Retrieve scholars supervised by or affiliated with the authenticated faculty
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [current, completed, all]
+            default: all
+        - in: query
+          name: search
+          schema:
+            type: string
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+        - in: query
+          name: role
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated scholars list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScholarsListResponse'
+
+  /theses/supervisor/scholars/{studentId}:
+    get:
+      summary: Retrieve complete research dossier and submission versions for a supervised scholar
+      security:
+        - BearerAuth: []
+        - CookieAuth: []
+      parameters:
+        - in: path
+          name: studentId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: role
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Comprehensive scholar history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScholarHistoryResponse'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+
+components:
+  securitySchemes:
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    ErrorResponse:
+      description: General error response
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorPayload'
+    ValidationError:
+      description: Input validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorPayload'
+    ForbiddenError:
+      description: Access forbidden
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorPayload'
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorPayload'
+
+  schemas:
+    ErrorPayload:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [message, code]
+          properties:
+            message:
+              type: string
+            code:
+              type: string
+            issues:
+              type: array
+              items:
+                type: object
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        fullName:
+          type: string
+        roles:
+          type: array
+          items:
+            type: string
+        department:
+          type: object
+
+    ThesisDraftResponse:
+      type: object
+      properties:
+        student:
+          type: object
+        supervisor:
+          type: object
+        thesis:
+          type: object
+
+    DraftMetadataInput:
+      type: object
+      required: [workingTitle, abstract, researchArea]
+      properties:
+        workingTitle:
+          type: string
+          minLength: 5
+        abstract:
+          type: string
+          minLength: 20
+        researchArea:
+          type: string
+          minLength: 2
+
+    UploadedFile:
+      type: object
+      properties:
+        storageKey:
+          type: string
+        originalFilename:
+          type: string
+        fileSizeBytes:
+          type: string
+        sha256Checksum:
+          type: string
+        mimeType:
+          type: string
+
+    SubmitThesisInput:
+      type: object
+      required: [workingTitle, storageKey, originalFilename]
+      properties:
+        workingTitle:
+          type: string
+          minLength: 5
+        storageKey:
+          type: string
+        originalFilename:
+          type: string
+
+    ResubmitThesisInput:
+      type: object
+      required: [storageKey, originalFilename]
+      properties:
+        storageKey:
+          type: string
+        originalFilename:
+          type: string
+        studentNote:
+          type: string
+
+    SubmissionResult:
+      type: object
+      properties:
+        submissionId:
+          type: string
+          format: uuid
+        submissionNumber:
+          type: integer
+        status:
+          type: string
+        submittedAt:
+          type: string
+          format: date-time
+        fileId:
+          type: string
+          format: uuid
+        currentStage:
+          type: string
+
+    QueueTask:
+      type: object
+      properties:
+        assignmentId:
+          type: string
+          format: uuid
+        submissionId:
+          type: string
+          format: uuid
+        submissionNumber:
+          type: integer
+        submittedAt:
+          type: string
+          format: date-time
+        workingTitle:
+          type: string
+        studentName:
+          type: string
+        rollNumber:
+          type: string
+        departmentCode:
+          type: string
+        departmentName:
+          type: string
+        stageCode:
+          type: string
+        stageName:
+          type: string
+        assignedRole:
+          type: string
+        status:
+          type: string
+
+    SubmissionDetail:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        status:
+          type: string
+        currentVersion:
+          type: integer
+        submissionReference:
+          type: string
+        student:
+          type: object
+        files:
+          type: array
+          items:
+            type: object
+        stages:
+          type: array
+          items:
+            type: object
+
+    EligibleRecipientsResponse:
+      type: object
+      properties:
+        currentStage:
+          type: string
+        allowedSelection:
+          type: string
+          enum: [single, single_or_both]
+        recipients:
+          type: array
+          items:
+            type: object
+            properties:
+              userId:
+                type: string
+                format: uuid
+              fullName:
+                type: string
+              email:
+                type: string
+              roleCode:
+                type: string
+              roleName:
+                type: string
+              departmentName:
+                type: string
+
+    ForwardInput:
+      type: object
+      required: [recipientUserIds]
+      properties:
+        summary:
+          type: string
+        recipientUserIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    ScholarsListResponse:
+      type: object
+      properties:
+        scholars:
+          type: array
+          items:
+            type: object
+        pagination:
+          type: object
+          properties:
+            page:
+              type: integer
+            limit:
+              type: integer
+            totalCount:
+              type: integer
+            totalPages:
+              type: integer
+
+    ScholarHistoryResponse:
+      type: object
+      properties:
+        scholar:
+          type: object
+        thesis:
+          type: object
+        submissions:
+          type: array
+          items:
+            type: object
