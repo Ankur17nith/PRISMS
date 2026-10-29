@@ -1,272 +1,224 @@
-# PRISMS
+# PRISMS — PhD Research & Institutional Scholars Management System
 
-Thesis submission and approval portal for NITH. A student uploads a thesis, it moves through a chain of reviewers, and only the chairman can download it.
+Production-ready backend for PhD thesis submission, workflow routing, approval orchestration, revision loops, and secure document management at NIT Hamirpur.
 
-## The workflow
+---
 
-1. **Student** uploads the thesis.
-2. It goes automatically to the student's **supervisor** (faculty).
-3. The supervisor approves, which forwards it to the **HOD**, the **DDPC convener**, or both.
-4. The HOD or DDPC approves, which forwards it to the **Chairman**.
-5. The **Chairman** is the only role that can download the file. Everyone else in the chain can view it but not download it.
+## 1. Project Overview & Architecture
 
-In this system, `APPROVE` means "forward to the next stage". A `REJECT` sends it back.
+PRISMS provides a secure, auditable, and multi-stage academic workflow engine:
+1. **Student Submission:** Authenticated doctoral scholars manage drafts, upload thesis PDFs into private filesystem storage with SHA-256 integrity checks, and formally submit their thesis.
+2. **Supervisor Review:** Assigned supervisors inspect thesis versions, read comments, and forward to authorized departmental HODs, or return for revisions.
+3. **Departmental & HOD Review:** Head of Department reviews the thesis inline within the portal. **HOD is strictly prohibited from downloading thesis documents.** HOD can forward to Chairperson SDPC, Dean Academics, or both in parallel.
+4. **Institutional Parallel Review:** Chairperson SDPC and Dean Academics review independently. Revisions or rejections halt parallel branches safely.
+5. **Final Senate Approval:** Chairperson Senate grants final approval (`APPROVED`), transitioning the thesis to `CLOSED` and recording formal academic completion.
+6. **Revision & History Tracking:** Returned theses allow scholar resubmission (creating immutable new versions `N+1`) while preserving all prior drafts, files, and remarks.
+7. **Supervisor Scholar Dashboard:** Supervisors can track current and completed scholars, review timelines, and view full submission dossiers with pagination and search.
 
-## Tech stack
+---
 
-- Node.js, Express 5, TypeScript (run with `tsx`)
-- PostgreSQL with Prisma 6
-- Auth: argon2 password hashing, JWT access tokens, rotating refresh tokens in httpOnly cookies
-- zod (validation), helmet, cors, express-rate-limit, nodemailer
+## 2. Technology Stack
 
-## Repository layout
+- **Runtime & Language:** Node.js (v22+), TypeScript (ES2022, NodeNext resolution, executed via `tsx`)
+- **Web Framework:** Express 5.x
+- **Database & ORM:** PostgreSQL 16+ with Prisma ORM 6.x
+- **Authentication:** Argon2id password hashing, short-lived JWT access tokens, rotating opaque refresh tokens stored as SHA-256 hashes in `sessions` table
+- **File Upload & Storage:** Multer memory storage, magic bytes signature validation (`%PDF-`), SHA-256 checksums, private filesystem storage outside web root
+- **Validation & Security:** Zod schemas, Helmet, CORS, Express-Rate-Limit, central error handler
+- **Testing:** Node.js native test runner (`node:test`, `node:assert/strict`) with Supertest
+
+---
+
+## 3. Repository Structure
 
 ```
 PRISMS/
 ├── backend/
 │   ├── prisma/
-│   │   ├── schema.prisma      # database schema
-│   │   ├── migrations/
-│   │   └── seed.ts            # dev seed (CSE department + sample accounts)
+│   │   ├── schema.prisma           # Canonical database schema
+│   │   ├── migrations/             # Applied PostgreSQL migrations
+│   │   └── seed.ts                 # Idempotent dev seed script (CSE department + accounts)
 │   ├── src/
-│   │   ├── app.ts
-│   │   ├── server.ts
-│   │   ├── config/env.ts      # validated environment variables
-│   │   ├── lib/               # prisma, audit, errors, mailer
-│   │   ├── middleware/        # auth (requireAuth, requireRole), validate, errorHandler
-│   │   ├── modules/auth/      # routes, service, schemas, tokens
-│   │   └── generated/prisma/  # generated client (gitignored)
-│   └── prisma.config.ts
-├── frontend/
+│   │   ├── app.ts                  # Express application setup & route mounting
+│   │   ├── server.ts               # HTTP server listener and graceful shutdown
+│   │   ├── config/
+│   │   │   └── env.ts              # Validated environment variables (Zod)
+│   │   ├── lib/
+│   │   │   ├── prisma.ts           # PrismaClient singleton instance
+│   │   │   ├── storage.ts          # Private storage, PDF magic bytes & path traversal protection
+│   │   │   ├── audit.ts            # Audit logging to audit_events table
+│   │   │   ├── errors.ts           # AppError class
+│   │   │   └── mailer.ts           # SMTP / console mail dispatcher
+│   │   ├── middleware/
+│   │   │   ├── auth.ts             # requireAuth, requireRole, AuthContext
+│   │   │   ├── errorHandler.ts     # Centralized error handler
+│   │   │   └── validate.ts         # Zod request body validation middleware
+│   │   ├── modules/
+│   │   │   ├── auth/               # Signup, login, refresh, password reset
+│   │   │   └── thesis/             # Submission, workflow routing, file view/download, tracking
+│   │   └── generated/prisma/       # Generated Prisma Client (gitignored)
+│   ├── storage/theses/             # Private thesis PDF storage (gitignored)
+│   ├── .env.example                # Example environment configuration
+│   └── package.json
 ├── docs/
-└── compose.yaml               # optional Postgres via Docker
+│   ├── API.md                      # Complete REST API reference
+│   ├── THESIS_WORKFLOW.md          # State machine, sequence, and Mermaid diagrams
+│   ├── AUTHORITY_ROUTING.md        # Authority matrix & recipient resolution rules
+│   ├── SECURITY.md                 # Security architecture, controls, and viewer limitations
+│   └── TESTING.md                  # Automated test guide & verified execution report
+├── compose.yaml                    # PostgreSQL service definition
+└── README.md
 ```
 
-## Getting started
+---
 
-### 1. Prerequisites
+## 4. Getting Started
 
-- Node.js 20 or newer
-- PostgreSQL (local install, or Docker using `compose.yaml`)
+### 4.1 Prerequisites
+- **Node.js:** v22.x or later
+- **PostgreSQL:** v16+ (local service, or via Docker/Podman using `compose.yaml`)
 
-### 2. Database
+### 4.2 Local Environment Setup
+From `backend/`:
 
-**Option A: local Postgres (Fedora)**
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
 
+2. Configure environment variables in `backend/.env`:
+   ```ini
+   DATABASE_URL="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms?schema=public"
+   JWT_ACCESS_SECRET="prisms-development-jwt-access-secret-32-chars-minimum-key"
+   MAX_THESIS_FILE_SIZE_BYTES=20971520
+   THESIS_STORAGE_PATH="./storage/theses"
+   FRONTEND_URL="http://localhost:3000"
+   PORT=4000
+   ```
+
+### 4.3 Database Setup, Migrations & Seeding
 ```bash
-sudo dnf install postgresql-server postgresql-contrib
-sudo postgresql-setup --initdb
-sudo systemctl enable --now postgresql
-sudo -u postgres psql
-```
-
-```sql
-CREATE USER prisms_app WITH PASSWORD 'choose_a_dev_password';
-CREATE DATABASE prisms OWNER prisms_app;
-ALTER USER prisms_app CREATEDB;
-```
-
-`CREATEDB` is needed because `prisma migrate dev` uses a temporary shadow database.
-
-In `/var/lib/pgsql/data/pg_hba.conf`, change `ident` to `scram-sha-256` on the `127.0.0.1/32` and `::1/128` lines, then `sudo systemctl restart postgresql`.
-
-**Option B: Docker**
-
-```bash
-export POSTGRES_PASSWORD=choose_a_dev_password
-docker compose up -d
-```
-
-This uses port **5433**, so use `localhost:5433` in the connection string below.
-
-### 3. Environment
-
-Create `backend/.env`:
-
-```
-DATABASE_URL="postgresql://prisms_app:choose_a_dev_password@localhost:5432/prisms"
-FRONTEND_URL="http://localhost:3000"
-
-# Generate: node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-JWT_ACCESS_SECRET=
-ACCESS_TOKEN_TTL_MINUTES=15
-REFRESH_TOKEN_TTL_DAYS=7
-
-# Leave empty while testing with sample emails. Later: nith.ac.in
-ALLOWED_EMAIL_DOMAIN=
-
-# Leave SMTP_HOST empty to print emails to the server console.
-# For a test inbox (e.g. Mailtrap sandbox) fill these in:
-SMTP_HOST=
-SMTP_PORT=2525
-SMTP_USER=
-SMTP_PASS=
-MAIL_FROM="PRISMS <no-reply@prisms.local>"
-
-# Optional: password for seeded dev accounts (default: ChangeMe-Dev-123)
-# SEED_PASSWORD=
-```
-
-`JWT_ACCESS_SECRET` is required and must be at least 32 characters. `.env` must never be committed.
-
-### 4. Install, migrate, seed, run
-
-Run everything from `backend/`:
-
-```bash
+# 1. Install dependencies
 npm install
+
+# 2. Generate Prisma Client
 npx prisma generate
-npx prisma migrate dev
+
+# 3. Apply migrations to PostgreSQL
+npx prisma migrate deploy
+
+# 4. Seed development accounts & workflow stages
 npm run seed
-npm run dev
 ```
 
+### 4.4 Running the Application
+```bash
+# Start development server with live reload
+npm run dev
+
+# Compile TypeScript
+npm run build
+
+# Start production server
+npm start
+```
 The API listens on `http://localhost:4000`.
 
-Useful extras:
+---
 
+## 5. Development Accounts (Seed Data)
+
+The seed script creates the **CSE Department**, 11 roles, 5 workflow stages, and these development accounts with default password `ChangeMe-Dev-123` (or `SEED_PASSWORD`):
+
+| Email | Role Code | Scope | Notes |
+|:---|:---|:---|:---|
+| `student1@example.test` | `STUDENT` | CSE Dept | Supervised by `supervisor1`, Roll: `21PHDCSE01` |
+| `student2@example.test` | `STUDENT` | CSE Dept | Supervised by `supervisor2`, Roll: `21PHDCSE02` |
+| `supervisor1@example.test`| `SUPERVISOR`| CSE Dept | Associate Professor FAC001 |
+| `supervisor2@example.test`| `SUPERVISOR`| CSE Dept | Professor FAC002 |
+| `hod.cse@example.test` | `HOD` | CSE Dept | **Strict download prohibition** |
+| `ddpc.cse@example.test`| `DDPC` | CSE Dept | Observer visibility on departmental submissions |
+| `sdpc@example.test` | `CHAIRPERSON_SDPC` | Institute | Senate Doctoral Programme Committee Chair |
+| `dean@example.test` | `DEAN_ACADEMICS` | Institute | Dean of Academic Affairs |
+| `chairman@example.test` | `CHAIRPERSON_SENATE` | Institute | Director & Chairman Senate (Final Approval) |
+| `admin@example.test` | `ADMIN` | Institute | Portal Administrator |
+
+---
+
+## 6. Thesis Lifecycle & Permission Summary
+
+```
+Student Draft ──► Upload PDF ──► Formal Submit ──► Stage 1: Supervisor Review
+                                                         │
+                        ┌────────────────────────────────┴──────────────────────┐
+                        ▼                                                       ▼
+               Return / Revision                                      Forward to HOD (CSE)
+                        ▲                                                       │
+                        │                                                       ▼
+                Student Resubmits                                     Stage 2: HOD Review
+                   (Version N+1)                                     (View Only - NO DOWNLOAD)
+                        ▲                                                       │
+                        │                                ┌──────────────────────┴──────────────────────┐
+                        │                                ▼                                             ▼
+                        │                      Stage 3A: SDPC Review                         Stage 3B: Dean Academics
+                        │                                │                                             │
+                        │                                └──────────────────────┬──────────────────────┘
+                        │                                                       ▼
+                        └───────────────────────────────────────────── Stage 4: Senate Review
+                                                                                │
+                                                                                ▼
+                                                                       FINAL APPROVAL (CLOSED)
+```
+
+### Key Permission Policies:
+- **HOD Download Prohibition:** Under no circumstances can an HOD download thesis documents. Only inline in-portal viewing is permitted.
+- **Dynamic Recipient Resolution:** Forwarding recipients are computed server-side based on the scholar's department and institutional role assignments.
+- **Multiple Roles:** Faculty members holding multiple roles (e.g. HOD and Supervisor) are scoped by the context of the thesis submission.
+
+---
+
+## 7. Testing & Quality Assurance
+
+PRISMS features an automated integration and security test suite using Node.js native test runner and Supertest.
+
+Run tests from `backend/`:
 ```bash
-npx prisma format
-npx prisma validate
-npx prisma studio       # browse the database
-npx tsc --noEmit        # type-check (tsx does not type-check)
+npm test
 ```
 
-> Run `npx prisma ...` from `backend/`, not from the repo root. Otherwise `npx` may download a different Prisma version than the project uses.
+### Verified Test Results:
+- **41/41 passing tests** covering:
+  - Student draft, PDF signature verification, file size limits, IDOR protection
+  - Supervisor queue, HOD dynamic recipient resolution, forwarding
+  - DDPC observer access and restriction enforcement
+  - In-portal inline viewing vs download authorization
+  - **HOD download denial enforcement**
+  - Parallel forwarding to both SDPC and Dean Academics
+  - Return for revision with mandatory remarks, student feedback visibility
+  - Multi-version resubmission (Version 1 -> Version 2)
+  - Senate final approval and thesis closure
+  - Formal rejection lifecycle
+  - Supervisor scholar tracking dashboard and pagination
+  - Single account multi-role validation
+  - Audit log persistence
 
-## Sample accounts (development only)
+For detailed test documentation and suite breakdown, see [`docs/TESTING.md`](file:///home/ankurgupta/PRISMS/docs/TESTING.md).
 
-`npm run seed` creates the CSE department, six roles, three workflow stages and these accounts. It refuses to run when `NODE_ENV=production`, and it is safe to re-run.
+---
 
-All use the password `ChangeMe-Dev-123` (or `SEED_PASSWORD`).
+## 8. Technical Documentation Directory
 
-| Email | Role | Notes |
-|---|---|---|
-| `student1@example.test` | STUDENT | supervised by `supervisor1` |
-| `student2@example.test` | STUDENT | supervised by `supervisor2` |
-| `supervisor1@example.test` | SUPERVISOR (CSE) | |
-| `supervisor2@example.test` | SUPERVISOR (CSE) | |
-| `hod.cse@example.test` | HOD (CSE) | |
-| `ddpc.cse@example.test` | DDPC (CSE) | |
-| `chairman@example.test` | CHAIRMAN | institute-wide |
-| `admin@example.test` | ADMIN | institute-wide |
+- [`docs/API.md`](file:///home/ankurgupta/PRISMS/docs/API.md): Comprehensive REST API endpoint reference with request/response examples.
+- [`docs/THESIS_WORKFLOW.md`](file:///home/ankurgupta/PRISMS/docs/THESIS_WORKFLOW.md): Workflow engine specification, Mermaid diagrams, and state transitions.
+- [`docs/AUTHORITY_ROUTING.md`](file:///home/ankurgupta/PRISMS/docs/AUTHORITY_ROUTING.md): Authority matrix, permission rules, and recipient resolution logic.
+- [`docs/SECURITY.md`](file:///home/ankurgupta/PRISMS/docs/SECURITY.md): Security controls, IDOR prevention, private storage, and viewer limitations.
+- [`docs/TESTING.md`](file:///home/ankurgupta/PRISMS/docs/TESTING.md): Testing guide and automated test report.
 
-Workflow stages, in order: **Supervisor review**, **HOD / DDPC review** (either one, or both), **Chairman review**.
+---
 
-## Authentication
+## 9. Notes for Production Deployment
 
-Base path: `/auth`
-
-| Method | Route | Purpose |
-|---|---|---|
-| POST | `/auth/signup` | Create a pending account and send a verification email |
-| POST | `/auth/verify-email` | Verify the email, activate the account |
-| POST | `/auth/resend-verification` | Send a new verification link |
-| POST | `/auth/login` | Log in, sets the `access_token` and `refresh_token` cookies |
-| POST | `/auth/refresh` | Rotate the refresh token, issue a new access token |
-| POST | `/auth/logout` | Revoke the current session |
-| POST | `/auth/logout-all` | Revoke all of the user's sessions (requires login) |
-| POST | `/auth/forgot-password` | Send a password reset link |
-| POST | `/auth/reset-password` | Set a new password, revokes all sessions |
-| GET | `/auth/me` | Current user, profile and active roles (requires login) |
-
-### Try it
-
-With no SMTP configured, emails are printed in the server terminal (look for `[mail:console]` and the `Token:` line).
-
-```bash
-# sign up, then copy the token from the server console
-curl -i -X POST localhost:4000/auth/signup \
-  -H "Content-Type: application/json" \
-  -d '{"email":"me@example.test","password":"a-long-test-password","fullName":"Me"}'
-
-curl -i -X POST localhost:4000/auth/verify-email \
-  -H "Content-Type: application/json" \
-  -d '{"token":"PASTE_TOKEN"}'
-
-# log in (seeded accounts need no signup), saving cookies
-curl -i -c cookies.txt -X POST localhost:4000/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"student1@example.test","password":"ChangeMe-Dev-123"}'
-
-curl -b cookies.txt localhost:4000/auth/me
-curl -i -b cookies.txt -c cookies.txt -X POST localhost:4000/auth/refresh
-curl -i -b cookies.txt -X POST localhost:4000/auth/logout
-```
-
-Do not commit `cookies.txt`.
-
-### Security design
-
-- **Passwords:** hashed with argon2id, minimum 10 characters.
-- **Access token:** short-lived JWT (15 minutes) in an `httpOnly`, `SameSite=Strict` cookie. `Authorization: Bearer` is also accepted for API testing.
-- **Refresh token:** random opaque value, stored only as a SHA-256 hash in the `sessions` table. It rotates on every use. If an old token is replayed, the whole session family is revoked.
-- **Lockout:** 5 failed logins lock the account for 15 minutes.
-- **Anti-enumeration:** signup, forgot-password and resend-verification always return the same response, and unknown emails cost the same time as wrong passwords.
-- **Rate limiting** on every sensitive route.
-- **Email verification and password reset** use single-use hashed tokens with expiry.
-- **Password reset** revokes all sessions and invalidates earlier access tokens.
-- **Audit log:** logins, failures, resets and permission denials are written to `audit_events`.
-
-## Authorization
-
-Authentication proves who someone is. What they may do comes from the database:
-
-| Question | Where the answer lives |
-|---|---|
-| Is this a student? | A `Student` row exists for the user |
-| Is this faculty? | A `Faculty` row exists for the user |
-| Who supervises a student? | An active `StudentSupervisorAssignment` (no end date) |
-| Is this user an HOD, DDPC, chairman or admin? | An active `UserRole` row (`validFrom` / `validUntil`) |
-
-Middleware in `src/middleware/auth.ts`:
-
-```ts
-router.get("/something", requireAuth, requireRole("CHAIRMAN"), handler);
-```
-
-Role codes are uppercase: `STUDENT`, `SUPERVISOR`, `HOD`, `DDPC`, `CHAIRMAN`, `ADMIN`.
-
-Permissions are enforced on the backend on every request, never in the frontend.
-
-## Database overview
-
-Main groups of tables (see `backend/prisma/schema.prisma`):
-
-- **People and org:** `users`, `departments`, `students`, `faculty`
-- **Roles:** `roles`, `user_roles`
-- **Supervision:** `student_supervisor_assignments` (with history)
-- **Thesis:** `theses`, `thesis_submissions` (versioned), `thesis_files` (metadata, checksum, scan status)
-- **Workflow:** `workflow_stage_definitions`, `workflow_stage_roles`, `submission_stages`, `review_assignments`, `reviews`, `review_comments`
-- **Auth:** `sessions`, `user_tokens`
-- **Audit:** `audit_events`
-
-## Project status
-
-**Done**
-- Database schema and migrations
-- Full authentication flow (signup, verification, login, refresh rotation, logout, password reset, lockout)
-- Role-based middleware
-- Dev seed data for the CSE department
-
-**Next**
-- Thesis routes: upload, forward (approve), reject and resubmit, view, chairman-only download
-- File storage in private storage with checksum and scan status
-- Claim-only account activation using the institute's email lists (instead of open signup)
-- Import script for students, faculty and supervisor assignments
-- Tests for the permission rules
-
-## Known limitations and to-dos
-
-- Signup is currently open. Before real use, set `ALLOWED_EMAIL_DOMAIN` or switch to claim-only accounts, and let admins grant HOD / DDPC / chairman roles only.
-- Partial unique indexes still need a raw-SQL migration: one active supervisor per student, one primary file per submission. A `CHECK` should tie department roles to a department.
-- Two refresh calls at the same moment look like token reuse and log the user out, so a frontend should serialize refreshes.
-- After `logout-all`, an already-issued access token stays valid until it expires (up to 15 minutes), except after a password reset.
-- No authenticated change-password endpoint and no MFA yet.
-- Seeded accounts have a known password and must never exist in production.
-
-## Notes for contributors
-
-- Use `.js` extensions in relative imports (`from "./lib/prisma.js"`), matching the existing code.
-- `src/generated/` is created by `npx prisma generate` and is not committed.
-- Never commit `.env` or `cookies.txt`.
+1. **Storage Provider:** While local private filesystem storage is configured for development, production can bind `THESIS_STORAGE_PATH` to a persistent private volume (e.g. NFS / private EBS) or an S3-compatible private bucket adapter.
+2. **Reverse Proxy:** Terminate SSL/TLS at Nginx/Caddy and configure `client_max_body_size 25M` to accommodate the 20 MiB thesis limit.
+3. **Malware Scanning:** An asynchronous ClamAV / VirusTotal scanner can poll `thesis_files` where `scan_status = 'PENDING'`, updating status to `'CLEAN'` or `'QUARANTINED'`.
+4. **Secrets:** Supply strong random strings for `JWT_ACCESS_SECRET` and database credentials through container secrets or vault environments. Never commit `.env`.
