@@ -253,6 +253,35 @@ export default function HomePage() {
                     Every submitted version, return remark, and approval timestamp is permanently retained in an immutable institutional archive.
                   </p>
                 </div>
+
+                <div className="bg-[#fcfcfb] border border-[#e2e2df] p-4 rounded-[6px] space-y-2 md:col-span-2">
+                  <h4 className="font-bold text-[#171717]">System Engineering & Development</h4>
+                  <p className="text-[#666] text-[12px]">
+                    PRISMS was designed and developed for the National Institute of Technology Hamirpur by:
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <a
+                      href="https://ankur-portfolio-topaz.vercel.app/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Ankur Gupta portfolio (opens in new tab)"
+                      className="inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[#171717] hover:text-[#16a34a] bg-white border border-[#e2e2df] px-3 py-1.5 rounded-[4px] hover:border-[#16a34a] transition focus:outline-none focus:ring-2 focus:ring-[#daa32f]"
+                    >
+                      <span>Ankur Gupta (Portfolio)</span>
+                      <span>↗</span>
+                    </a>
+                    <a
+                      href="https://github.com/itzzadi04"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Aditya Sharma GitHub profile (opens in new tab)"
+                      className="inline-flex items-center gap-1.5 text-[12.5px] font-bold text-[#171717] hover:text-[#16a34a] bg-white border border-[#e2e2df] px-3 py-1.5 rounded-[4px] hover:border-[#16a34a] transition focus:outline-none focus:ring-2 focus:ring-[#daa32f]"
+                    >
+                      <span>Aditya Sharma (GitHub)</span>
+                      <span>↗</span>
+                    </a>
+                  </div>
+                </div>
               </div>
 
               <div className="pt-2 flex items-center justify-between">
@@ -591,17 +620,41 @@ export default function HomePage() {
             {/* Column 3: Developers (Figma 23:1475) */}
             <div className="space-y-3">
               <h4 className="font-bold text-[15px] text-[#171717]">Developers</h4>
-              <div className="space-y-1 text-[12.5px] text-[#666]">
-                <p className="font-bold text-[#171717]">Ankur Gupta</p>
-                <p>Department of Computer Science & Engineering</p>
-                <p>National Institute of Technology Hamirpur</p>
-              </div>
-              <div className="pt-2">
+              <ul className="space-y-2 text-[12.5px] text-[#666]">
+                <li>
+                  <a
+                    href="https://ankur-portfolio-topaz.vercel.app/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Ankur Gupta portfolio (opens in new tab)"
+                    className="font-bold text-[#171717] hover:text-[#16a34a] hover:underline transition inline-flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-[#daa32f] rounded"
+                  >
+                    <span>Ankur Gupta</span>
+                    <span className="text-[10px] text-[#888]">↗</span>
+                  </a>
+                  <p className="text-[11.5px] text-[#666]">Department of Computer Science & Engineering</p>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/itzzadi04"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Aditya Sharma GitHub profile (opens in new tab)"
+                    className="font-bold text-[#171717] hover:text-[#16a34a] hover:underline transition inline-flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-[#daa32f] rounded"
+                  >
+                    <span>Aditya Sharma</span>
+                    <span className="text-[10px] text-[#888]">↗</span>
+                  </a>
+                  <p className="text-[11.5px] text-[#666]">Department of Computer Science & Engineering</p>
+                </li>
+              </ul>
+              <div className="pt-1">
                 <a
                   href="https://github.com"
                   target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[#171717] bg-[#f2f2f0] hover:bg-[#e2e2df] px-3 py-1.5 rounded transition"
+                  rel="noopener noreferrer"
+                  aria-label="PRISMS Source Code Repository (opens in new tab)"
+                  className="inline-flex items-center gap-1.5 text-[12px] font-bold text-[#171717] bg-[#f2f2f0] hover:bg-[#e2e2df] px-3 py-1.5 rounded transition focus:outline-none focus:ring-2 focus:ring-[#daa32f]"
                 >
                   <span>Source code</span>
                   <span>↗</span>

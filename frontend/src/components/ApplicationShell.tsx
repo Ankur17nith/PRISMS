@@ -356,17 +356,41 @@ export function ApplicationShell({ portalType, breadcrumb, children }: Applicati
             {/* Column 3: Developers (Figma 23:1475) */}
             <div className="space-y-3">
               <h4 className="font-bold text-[14px] text-[#171717]">Developers</h4>
-              <div className="space-y-1 text-[12px] text-[#666]">
-                <p className="font-bold text-[#171717]">Ankur Gupta</p>
-                <p>Department of Computer Science & Engineering</p>
-                <p>National Institute of Technology Hamirpur</p>
-              </div>
-              <div className="pt-1.5">
+              <ul className="space-y-2 text-[12px] text-[#666]">
+                <li>
+                  <a
+                    href="https://ankur-portfolio-topaz.vercel.app/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Ankur Gupta portfolio (opens in new tab)"
+                    className="font-bold text-[#171717] hover:text-[#16a34a] hover:underline transition inline-flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-[#daa32f] rounded"
+                  >
+                    <span>Ankur Gupta</span>
+                    <span className="text-[10px] text-[#888]">↗</span>
+                  </a>
+                  <p className="text-[11px] text-[#666]">Department of CSE, NIT Hamirpur</p>
+                </li>
+                <li>
+                  <a
+                    href="https://github.com/itzzadi04"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label="Aditya Sharma GitHub profile (opens in new tab)"
+                    className="font-bold text-[#171717] hover:text-[#16a34a] hover:underline transition inline-flex items-center gap-1 focus:outline-none focus:ring-2 focus:ring-[#daa32f] rounded"
+                  >
+                    <span>Aditya Sharma</span>
+                    <span className="text-[10px] text-[#888]">↗</span>
+                  </a>
+                  <p className="text-[11px] text-[#666]">Department of CSE, NIT Hamirpur</p>
+                </li>
+              </ul>
+              <div className="pt-1">
                 <a
                   href="https://github.com"
                   target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#171717] bg-[#f2f2f0] hover:bg-[#e2e2df] px-2.5 py-1 rounded transition"
+                  rel="noopener noreferrer"
+                  aria-label="PRISMS Source Code (opens in new tab)"
+                  className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#171717] bg-[#f2f2f0] hover:bg-[#e2e2df] px-2.5 py-1 rounded transition focus:outline-none focus:ring-2 focus:ring-[#daa32f]"
                 >
                   <span>Source code</span>
                   <span>↗</span>
