@@ -26,6 +26,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -150,6 +151,39 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
     }
   };
 
+  // Handle Download PDF for authorized supervisors (HOD strictly prohibited)
+  const handleDownloadPdf = async () => {
+    if (activeRole === "HOD" || !submission) return;
+    setDownloading(true);
+    try {
+      const targetFile = submission.files && submission.files.length > 0 ? submission.files[0] : null;
+      const downloadEndpoint = api.getDownloadUrl(submission.id, targetFile?.id, activeRole || undefined);
+      const res = await fetch(downloadEndpoint, { credentials: "include" });
+      if (!res.ok) {
+        let msg = "Download failed. Institutional access denied.";
+        try {
+          const json = await res.json();
+          if (json?.error?.message) msg = json.error.message;
+        } catch {}
+        setError(msg);
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = targetFile?.originalFileName || `${submission.submissionReference}_v${submission.currentVersion}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err: unknown) {
+      setError("Error downloading document: " + (err instanceof Error ? err.message : "Network error"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   if (loading) {
     return (
       <ApplicationShell portalType="faculty" breadcrumb="Faculty portal / Review Workspace">
@@ -219,6 +253,32 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
               </svg>
               <span>Open in Reader</span>
             </Link>
+
+            {activeRole === "HOD" ? (
+              <span
+                title="NIT Hamirpur regulations restrict thesis file downloading in HOD review mode"
+                className="bg-[#3e341f] border border-[#856404]/50 text-[#e6b800] text-[11px] font-bold px-2.5 py-1.5 rounded flex items-center gap-1.5"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                </svg>
+                <span>View-Only Mode</span>
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={downloading}
+                aria-label="Download Thesis PDF"
+                className="bg-[#16a34a] hover:bg-[#15803d] disabled:opacity-50 text-white font-bold text-[12px] px-3 py-1.5 rounded transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                <span>{downloading ? "Downloading..." : "Download PDF"}</span>
+              </button>
+            )}
+
             <span className="font-mono text-[13px] font-bold text-[#171717]">
               {submission?.submissionReference || "TH-2026-001"} (v{submission?.currentVersion || 1})
             </span>
