@@ -608,6 +608,31 @@ describe("PRISMS Thesis Workflow & Security Integration Suite", () => {
       assert.equal(res.status, 403);
       assert.equal(res.body.error.code, "FORBIDDEN");
     });
+
+    it("should allow HOD to list all departmental scholars using role=HOD query param", async () => {
+      const res = await request(app)
+        .get("/theses/supervisor/scholars?role=HOD")
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 200);
+      assert.ok(res.body.scholars.length >= 2);
+      const student1 = res.body.scholars.find((s: any) => s.rollNumber === "21PHDCSE01");
+      const student2 = res.body.scholars.find((s: any) => s.rollNumber === "21PHDCSE02");
+      assert.ok(student1, "Student 1 must be visible to HOD");
+      assert.ok(student2, "Student 2 must be visible to HOD");
+      assert.equal(student1.departmentCode, "CSE");
+      assert.equal(student2.departmentCode, "CSE");
+    });
+
+    it("should allow HOD to view submission history for any scholar in their department", async () => {
+      const res = await request(app)
+        .get(`/theses/supervisor/scholars/${student1Id}?role=HOD`)
+        .set("Authorization", `Bearer ${hodToken}`);
+
+      assert.equal(res.status, 200);
+      assert.equal(res.body.scholar.rollNumber, "21PHDCSE01");
+      assert.ok(res.body.submissions.length >= 1);
+    });
   });
 
   // ---------------------------------------------------------------------------
