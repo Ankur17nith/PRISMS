@@ -86,6 +86,14 @@ function SubmissionDetailsContent() {
               {formatStatusLabel(submission.status)}
             </span>
 
+            <Link
+              href={`/student/thesis/reader?id=${submission.id}`}
+              className="bg-[#171717] hover:bg-[#333] text-white text-[12px] font-bold px-3 py-1.5 rounded-[6px] transition flex items-center gap-1.5 shadow-sm"
+            >
+              <span>📖</span>
+              <span>Open in Dedicated Reader</span>
+            </Link>
+
             {submission.status === "REVISION_REQUIRED" && (
               <Link
                 href={`/student/thesis/submit?resubmit=${submission.id}`}

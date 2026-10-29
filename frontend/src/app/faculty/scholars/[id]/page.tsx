@@ -114,8 +114,15 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
                         {formatStatusLabel(sub.status)}
                       </span>
                       <Link
+                        href={`/faculty/thesis/reader/${sub.id}`}
+                        className="bg-[#171717] hover:bg-[#333] text-white text-[12px] font-bold px-3 py-1 rounded transition flex items-center gap-1 shadow-sm"
+                      >
+                        <span>📖</span>
+                        <span>View in Reader</span>
+                      </Link>
+                      <Link
                         href={`/faculty/reviews/${sub.id}`}
-                        className="bg-[#16a34a] hover:bg-[#15803d] text-white text-[12px] font-bold px-3 py-1 rounded"
+                        className="bg-[#16a34a] hover:bg-[#15803d] text-white text-[12px] font-bold px-3 py-1 rounded shadow-sm"
                       >
                         Inspect Review Workspace →
                       </Link>
