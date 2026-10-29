@@ -1,8 +1,9 @@
 import type { Request } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
+import fs from "node:fs";
 import { audit } from "../../lib/audit.js";
-import { fileExists, ValidatedPdf } from "../../lib/storage.js";
+import { fileExists, getSecureFilePath, ValidatedPdf } from "../../lib/storage.js";
 import type { AuthContext } from "../../middleware/auth.js";
 import { ROLES, STAGE_CODES, hasNormalizedRole, normalizeRoleCode } from "./thesis.constants.js";
 import type {
@@ -114,7 +115,15 @@ export async function getStudentThesisDraft(userId: string) {
           abstract: thesis.abstract,
           researchArea: thesis.researchArea,
           status: thesis.status,
-          latestSubmission: thesis.submissions[0] ?? null,
+          latestSubmission: thesis.submissions[0]
+            ? {
+                ...thesis.submissions[0],
+                files: thesis.submissions[0].files.map((f) => ({
+                  ...f,
+                  fileSizeBytes: Number(f.fileSizeBytes),
+                })),
+              }
+            : null,
         }
       : null,
   };
@@ -235,7 +244,17 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
       },
     });
 
-    // 2. Link file
+    // 2. Link file with accurate byte size
+    let fileSizeBytes = BigInt(0);
+    try {
+      const filePath = getSecureFilePath(input.storageKey!);
+      if (fs.existsSync(filePath)) {
+        fileSizeBytes = BigInt(fs.statSync(filePath).size);
+      }
+    } catch {
+      // fallback
+    }
+
     const file = await tx.thesisFile.create({
       data: {
         submissionId: sub.id,
@@ -243,7 +262,7 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
         originalFilename: input.originalFilename ?? "thesis.pdf",
         storageKey: input.storageKey!,
         mimeType: "application/pdf",
-        fileSizeBytes: BigInt(0), // will be updated from storage if known
+        fileSizeBytes,
         scanStatus: "CLEAN",
         isPrimary: true,
       },
@@ -344,7 +363,17 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
       },
     });
 
-    // 2. Link newly uploaded revised file (previous versions remain untouched)
+    // 2. Link newly uploaded revised file with accurate byte size
+    let resubmitFileSizeBytes = BigInt(0);
+    try {
+      const filePath = getSecureFilePath(input.storageKey);
+      if (fs.existsSync(filePath)) {
+        resubmitFileSizeBytes = BigInt(fs.statSync(filePath).size);
+      }
+    } catch {
+      // fallback
+    }
+
     const file = await tx.thesisFile.create({
       data: {
         submissionId: sub.id,
@@ -352,7 +381,7 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
         originalFilename: input.originalFilename,
         storageKey: input.storageKey,
         mimeType: "application/pdf",
-        fileSizeBytes: BigInt(0),
+        fileSizeBytes: resubmitFileSizeBytes,
         scanStatus: "CLEAN",
         isPrimary: true,
       },
@@ -466,7 +495,10 @@ export async function getStudentSubmissions(userId: string) {
     submissions: thesis.submissions.map((s) => ({
       id: s.id,
       submissionNumber: s.submissionNumber,
+      submissionReference: `TH-${new Date(s.submittedAt).getFullYear()}-${String(s.submissionNumber).padStart(3, "0")}`,
+      title: thesis.workingTitle,
       status: s.status,
+      currentVersion: s.submissionNumber,
       submittedAt: s.submittedAt,
       closureReason: s.closureReason,
       files: s.files.map((f) => ({
@@ -586,6 +618,9 @@ export async function getSubmissionDetail(submissionId: string, auth: AuthContex
     submission: {
       id: submission.id,
       submissionNumber: submission.submissionNumber,
+      submissionReference: `TH-2026-${submission.submissionNumber.toString().padStart(3, "0")}`,
+      currentVersion: submission.submissionNumber,
+      title: submission.thesis.workingTitle,
       status: submission.status,
       submittedAt: submission.submittedAt,
       closedAt: submission.closedAt,
@@ -601,12 +636,34 @@ export async function getSubmissionDetail(submissionId: string, auth: AuthContex
         rollNumber: submission.thesis.student.rollNumber,
         fullName: submission.thesis.student.user.fullName,
         email: submission.thesis.student.user.collegeEmail,
+        collegeEmail: submission.thesis.student.user.collegeEmail,
+        user: {
+          id: submission.thesis.student.user.id,
+          fullName: submission.thesis.student.user.fullName,
+          collegeEmail: submission.thesis.student.user.collegeEmail,
+        },
         department: submission.thesis.student.department,
+      },
+      student: {
+        id: submission.thesis.student.id,
+        rollNumber: submission.thesis.student.rollNumber,
+        program: submission.thesis.student.program,
+        user: {
+          id: submission.thesis.student.user.id,
+          fullName: submission.thesis.student.user.fullName,
+          collegeEmail: submission.thesis.student.user.collegeEmail,
+        },
+        department: {
+          id: submission.thesis.student.department.id,
+          code: submission.thesis.student.department.code,
+          name: submission.thesis.student.department.name,
+        },
       },
       files: submission.files.map((f) => ({
         id: f.id,
         originalFilename: f.originalFilename,
-        fileSizeBytes: f.fileSizeBytes.toString(),
+        originalFileName: f.originalFilename,
+        fileSizeBytes: Number(f.fileSizeBytes),
         sha256Checksum: f.sha256Checksum,
         scanStatus: f.scanStatus,
         uploadedAt: f.uploadedAt,
@@ -1598,16 +1655,30 @@ export async function getSupervisorScholars(userId: string, query: ScholarQuery)
     const isSupervisionActive = !a.endDate || a.endDate > now;
 
     return {
+      scholarId: a.studentId,
       studentId: a.studentId,
       rollNumber: a.student.rollNumber,
       fullName: a.student.user.fullName,
       email: a.student.user.collegeEmail,
+      collegeEmail: a.student.user.collegeEmail,
       program: a.student.program,
+      admissionStatus: isSupervisionActive ? "Active" : "Completed",
       departmentCode: a.student.department.code,
       departmentName: a.student.department.name,
       supervisionStatus: isSupervisionActive ? "CURRENT" : "COMPLETED",
       supervisionStartDate: a.startDate,
       supervisionEndDate: a.endDate,
+      activeSubmission: latestSub
+        ? {
+            id: latestSub.id,
+            submissionReference: `TH-2026-${latestSub.submissionNumber.toString().padStart(3, "0")}`,
+            title: a.student.thesis?.workingTitle ?? "Doctoral Dissertation",
+            status: latestSub.status,
+            currentVersion: latestSub.submissionNumber,
+            submittedAt: latestSub.submittedAt ? latestSub.submittedAt.toISOString() : null,
+            currentStage: currentPendingStage?.definition.name ?? null,
+          }
+        : null,
       thesis: a.student.thesis
         ? {
             id: a.student.thesis.id,
@@ -1646,7 +1717,7 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
     include: {
       student: {
         include: {
-          user: { select: { fullName: true, collegeEmail: true } },
+          user: { select: { id: true, fullName: true, collegeEmail: true } },
           department: { select: { code: true, name: true } },
         },
       },
@@ -1685,12 +1756,64 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
     },
   });
 
+  const submissionsList = thesis
+    ? thesis.submissions.map((s) => ({
+        id: s.id,
+        submissionNumber: s.submissionNumber,
+        submissionReference: `TH-2026-${s.submissionNumber.toString().padStart(3, "0")}`,
+        currentVersion: s.submissionNumber,
+        title: thesis.workingTitle,
+        status: s.status,
+        submittedAt: s.submittedAt,
+        closedAt: s.closedAt,
+        closureReason: s.closureReason,
+        files: s.files.map((f) => ({
+          id: f.id,
+          originalFilename: f.originalFilename,
+          originalFileName: f.originalFilename,
+          fileSizeBytes: Number(f.fileSizeBytes),
+          scanStatus: f.scanStatus,
+          uploadedAt: f.uploadedAt,
+        })),
+        stages: s.stages.map((st) => ({
+          id: st.id,
+          stageName: st.definition.name,
+          stageCode: st.definition.code,
+          status: st.status,
+          startedAt: st.startedAt,
+          completedAt: st.completedAt,
+          assignments: st.assignments.map((a) => ({
+            id: a.id,
+            reviewerName: a.reviewer.fullName,
+            reviewerRole: a.reviewerRole?.code ?? "REVIEWER",
+            status: a.assignmentStatus,
+            decision: a.review?.decision ?? null,
+            decisionSummary: a.review?.summary ?? null,
+            decidedAt: a.review?.decidedAt ?? null,
+          })),
+        })),
+        feedback: s.comments.map((c) => ({
+          id: c.id,
+          author: c.author.fullName,
+          body: c.body,
+          createdAt: c.createdAt,
+        })),
+      }))
+    : [];
+
   return {
     scholar: {
       studentId: assignment.studentId,
+      scholarId: assignment.studentId,
       rollNumber: assignment.student.rollNumber,
       fullName: assignment.student.user.fullName,
       email: assignment.student.user.collegeEmail,
+      collegeEmail: assignment.student.user.collegeEmail,
+      user: {
+        id: assignment.student.user.id,
+        fullName: assignment.student.user.fullName,
+        collegeEmail: assignment.student.user.collegeEmail,
+      },
       program: assignment.student.program,
       department: assignment.student.department,
       supervisionStartDate: assignment.startDate,
@@ -1703,45 +1826,9 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
           abstract: thesis.abstract,
           researchArea: thesis.researchArea,
           status: thesis.status,
-          submissions: thesis.submissions.map((s) => ({
-            id: s.id,
-            submissionNumber: s.submissionNumber,
-            status: s.status,
-            submittedAt: s.submittedAt,
-            closedAt: s.closedAt,
-            closureReason: s.closureReason,
-            files: s.files.map((f) => ({
-              id: f.id,
-              originalFilename: f.originalFilename,
-              fileSizeBytes: f.fileSizeBytes.toString(),
-              scanStatus: f.scanStatus,
-              uploadedAt: f.uploadedAt,
-            })),
-            stages: s.stages.map((st) => ({
-              id: st.id,
-              stageName: st.definition.name,
-              stageCode: st.definition.code,
-              status: st.status,
-              startedAt: st.startedAt,
-              completedAt: st.completedAt,
-              assignments: st.assignments.map((a) => ({
-                id: a.id,
-                reviewerName: a.reviewer.fullName,
-                reviewerRole: a.reviewerRole?.code ?? "REVIEWER",
-                status: a.assignmentStatus,
-                decision: a.review?.decision ?? null,
-                decisionSummary: a.review?.summary ?? null,
-                decidedAt: a.review?.decidedAt ?? null,
-              })),
-            })),
-            feedback: s.comments.map((c) => ({
-              id: c.id,
-              author: c.author.fullName,
-              body: c.body,
-              createdAt: c.createdAt,
-            })),
-          })),
+          submissions: submissionsList,
         }
       : null,
+    submissions: submissionsList,
   };
 }

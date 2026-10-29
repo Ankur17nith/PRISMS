@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { useAuth } from "@/lib/auth";
 import { api, SubmissionItem } from "@/lib/api";
+import { formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
 import { ThesisBookReader } from "@/components/ThesisBookReader";
 
 export default function FacultyReviewWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
@@ -26,6 +27,11 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
 
   useEffect(() => {
     async function loadData() {
+      if (!id || id === "undefined") {
+        setError("Invalid thesis submission identifier provided.");
+        setLoading(false);
+        return;
+      }
       try {
         const [sub, recipientsData] = await Promise.all([
           api.getSubmissionDetails(id),
@@ -161,29 +167,32 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
                 Acting Role: {activeRole || "SUPERVISOR"}
               </span>
             </div>
-            <h1 className="text-[24px] font-bold text-[#171717] mt-1">{submission?.title}</h1>
+            <h1 className="text-[24px] font-bold text-[#171717] mt-1">
+              {submission?.title || "PhD Thesis Submission"}
+            </h1>
             <p className="text-[13px] text-[#666]">
-              Scholar: <span className="font-bold text-[#171717]">{submission?.student.user.fullName}</span> (
-              {submission?.student.rollNumber}) · Dept. of {submission?.student.department.name}
+              Scholar:{" "}
+              <span className="font-bold text-[#171717]">
+                {submission?.student?.user?.fullName ||
+                  (submission as any)?.scholar?.fullName ||
+                  (submission as any)?.scholar?.user?.fullName ||
+                  "Doctoral Scholar"}
+              </span>{" "}
+              ({submission?.student?.rollNumber || (submission as any)?.scholar?.rollNumber || "N/A"}) · Dept. of{" "}
+              {submission?.student?.department?.name ||
+                (submission as any)?.scholar?.department?.name ||
+                "Computer Science and Engineering"}
             </p>
           </div>
 
           <div className="flex items-center gap-3">
             <span className="font-mono text-[13px] font-bold text-[#171717]">
-              {submission?.submissionReference} (v{submission?.currentVersion})
+              {submission?.submissionReference || "TH-2026-001"} (v{submission?.currentVersion || 1})
             </span>
             <span
-              className={`text-[12px] font-bold px-3 py-1 rounded-[4px] ${
-                submission?.status === "APPROVED"
-                  ? "bg-[#edf8ef] text-[#166534]"
-                  : submission?.status === "REVISION_REQUIRED"
-                  ? "bg-[#fff7e6] text-[#8a570d]"
-                  : submission?.status === "REJECTED"
-                  ? "bg-[#fff1ef] text-[#b42318]"
-                  : "bg-[#edf8ef] text-[#166534]"
-              }`}
+              className={`text-[12px] font-bold px-3 py-1 rounded-[4px] ${getStatusBadgeClasses(submission?.status)}`}
             >
-              {submission?.status.replace(/_/g, " ")}
+              {formatStatusLabel(submission?.status)}
             </span>
           </div>
         </div>
