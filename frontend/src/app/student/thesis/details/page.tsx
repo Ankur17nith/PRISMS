@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { ThesisBookReader } from "@/components/ThesisBookReader";
 import { api, SubmissionItem } from "@/lib/api";
-import { formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
+import { formatDateTime, formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
 
 function SubmissionDetailsContent() {
   const searchParams = useSearchParams();
@@ -76,6 +76,9 @@ function SubmissionDetailsContent() {
             <p className="text-[13px] text-[#666]">
               Reference: <span className="font-bold text-[#171717]">{submission.submissionReference}</span> ·
               Version <span className="font-bold text-[#171717]">{submission.currentVersion}</span>
+              {submission.submittedAt && (
+                <> · Submitted: <span className="font-semibold text-[#171717]">{formatDateTime(submission.submittedAt)}</span></>
+              )}
             </p>
           </div>
 
@@ -174,11 +177,7 @@ function SubmissionDetailsContent() {
                       <div className="flex justify-between items-center mb-1">
                         <span className="font-bold text-[#171717]">{dec.reviewer.fullName}</span>
                         <span className="text-[10.5px] text-[#666]">
-                          {new Date(dec.createdAt).toLocaleDateString("en-IN", {
-                            day: "numeric",
-                            month: "short",
-                            year: "numeric",
-                          })}
+                          {formatDateTime(dec.createdAt)}
                         </span>
                       </div>
                       <p className="text-[#303030] whitespace-pre-wrap">{dec.remarks || "No written remarks recorded."}</p>

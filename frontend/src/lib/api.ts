@@ -60,6 +60,10 @@ export interface SubmissionItem {
     assignments?: Array<{
       id: string;
       status: string;
+      reviewerId?: string;
+      reviewerUserId?: string;
+      reviewerRole?: string;
+      reviewerName?: string;
       reviewer: { id: string; fullName: string; collegeEmail: string };
     }>;
   }>;
@@ -625,8 +629,14 @@ export const api = {
       const res = await request<any>("/theses/my");
       const list = Array.isArray(res) ? res : Array.isArray(res?.submissions) ? res.submissions : [];
       return list.map((item: any) => normalizeSubmission(item));
-    } catch {
-      return [];
+    } catch (err) {
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("prisms_demo_user");
+        if (stored) {
+          return MOCK_SUBMISSIONS.map((item) => normalizeSubmission(item));
+        }
+      }
+      throw err;
     }
   },
 
@@ -783,9 +793,13 @@ export const api = {
   },
 
   // Supervisor Scholars
-  getMyScholars: async (status?: string): Promise<ScholarItem[]> => {
+  getMyScholars: async (role?: string, status?: string): Promise<ScholarItem[]> => {
     try {
-      const res = await request<any>(`/theses/supervisor/scholars${status ? `?status=${status}` : ""}`);
+      const params = new URLSearchParams();
+      if (role) params.set("role", role);
+      if (status) params.set("status", status);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const res = await request<any>(`/theses/supervisor/scholars${qs}`);
       const rawList = Array.isArray(res) ? res : Array.isArray(res?.scholars) ? res.scholars : [];
       return rawList.map((s: any) => {
         const id = s.scholarId || s.studentId || "";
@@ -818,7 +832,7 @@ export const api = {
     }
   },
 
-  getScholarHistory: async (scholarId: string) => {
+  getScholarHistory: async (scholarId: string, role?: string) => {
     if (!scholarId || scholarId === "undefined") {
       return {
         scholar: null,
@@ -826,7 +840,7 @@ export const api = {
       };
     }
     try {
-      const res = await request<any>(`/theses/supervisor/scholars/${scholarId}`);
+      const res = await request<any>(`/theses/supervisor/scholars/${scholarId}${role ? `?role=${role}` : ""}`);
       const rawScholar = res?.scholar || null;
       let scholarObj = null;
       if (rawScholar) {
