@@ -11,6 +11,9 @@ const schema = z.object({
   ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().positive().default(15),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().positive().default(7),
 
+  MAX_THESIS_FILE_SIZE_BYTES: z.coerce.number().positive().default(20 * 1024 * 1024), // 20 MiB
+  THESIS_STORAGE_PATH: z.string().default("./storage/theses"),
+
   // Leave empty while testing with sample mail; set to e.g. "nith.ac.in" later.
   ALLOWED_EMAIL_DOMAIN: z.string().optional(),
 
