@@ -232,19 +232,27 @@ router.get("/:submissionId/file/download", requireAuth, async (req, res) => {
 // Supervisor Scholar Tracking Endpoints
 // =============================================================================
 
-// List current and completed scholars for Supervisor
+// List current and completed scholars for Supervisor or HOD
 router.get("/supervisor/scholars", requireAuth, async (req, res) => {
   const parsed = scholarQuerySchema.safeParse(req.query);
   if (!parsed.success) {
     throw new AppError(400, "Invalid query parameters", "VALIDATION_ERROR");
   }
-  const result = await service.getSupervisorScholars(req.auth!.userId, parsed.data);
+  const result = await service.getSupervisorScholars(
+    req.auth!.userId,
+    parsed.data,
+    typeof req.query.role === "string" ? req.query.role : undefined,
+  );
   res.json(result);
 });
 
-// Get detailed submission and version history for a specific supervised scholar
+// Get detailed submission and version history for a specific supervised or departmental scholar
 router.get("/supervisor/scholars/:studentId", requireAuth, async (req, res) => {
-  const result = await service.getSupervisorScholarHistory(req.auth!.userId, uuidParam(req.params.studentId, "scholar"));
+  const result = await service.getSupervisorScholarHistory(
+    req.auth!.userId,
+    uuidParam(req.params.studentId, "scholar"),
+    typeof req.query.role === "string" ? req.query.role : undefined,
+  );
   res.json(result);
 });
 

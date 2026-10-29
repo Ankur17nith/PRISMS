@@ -694,9 +694,16 @@ export async function getSubmissionDetail(submissionId: string, auth: AuthContex
         assignments: st.assignments.map((a) => ({
           id: a.id,
           reviewerId: a.reviewerUserId,
+          reviewerUserId: a.reviewerUserId,
           reviewerName: a.reviewer.fullName,
           reviewerRole: a.reviewerRole?.code ?? "REVIEWER",
+          reviewer: {
+            id: a.reviewer.id,
+            fullName: a.reviewer.fullName,
+            collegeEmail: a.reviewer.collegeEmail,
+          },
           status: a.assignmentStatus,
+          assignmentStatus: a.assignmentStatus,
           decision: a.review?.decision ?? null,
           decisionSummary: a.review?.summary ?? null,
           decidedAt: a.review?.decidedAt ?? null,
