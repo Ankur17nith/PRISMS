@@ -102,58 +102,66 @@ export default function FacultyScholarsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f2f2f0]">
-                {filtered.map((s) => (
-                  <tr key={s.scholarId} className="hover:bg-[#fafaf9]">
-                    <td className="py-3.5 px-4 font-mono font-bold text-[#171717]">{s.rollNumber}</td>
-                    <td className="py-3.5 px-4">
-                      <span className="font-bold text-[#171717] block">{s.fullName}</span>
-                      <span className="text-[11px] text-[#666]">{s.collegeEmail}</span>
-                    </td>
-                    <td className="py-3.5 px-4 text-[#666]">{s.program}</td>
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`text-[11px] font-bold px-2 py-0.5 rounded ${
-                          s.admissionStatus === "ACTIVE"
-                            ? "bg-[#edf8ef] text-[#166534]"
-                            : "bg-[#f2f2f0] text-[#666]"
-                        }`}
-                      >
-                        {s.admissionStatus}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {s.activeSubmission ? (
-                        <div>
-                          <span className="font-mono text-[12px] font-bold text-[#171717]">
-                            {s.activeSubmission.submissionReference} (v{s.activeSubmission.currentVersion})
-                          </span>
-                          <span className="block text-[11px] text-[#666] truncate max-w-xs">
-                            {s.activeSubmission.title}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-[12px] text-[#a3a3a3]">No submission yet</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      {s.activeSubmission?.currentStage ? (
-                        <span className="bg-[#fff7e6] text-[#8a570d] text-[11px] font-bold px-2 py-0.5 rounded">
-                          {s.activeSubmission.currentStage}
+                {filtered.map((s, idx) => {
+                  const sid = s.scholarId || s.studentId || s.rollNumber || `scholar-${idx}`;
+                  const targetId = s.scholarId || s.studentId;
+                  return (
+                    <tr key={sid} className="hover:bg-[#fafaf9]">
+                      <td className="py-3.5 px-4 font-mono font-bold text-[#171717]">{s.rollNumber}</td>
+                      <td className="py-3.5 px-4">
+                        <span className="font-bold text-[#171717] block">{s.fullName}</span>
+                        <span className="text-[11px] text-[#666]">{s.collegeEmail}</span>
+                      </td>
+                      <td className="py-3.5 px-4 text-[#666]">{s.program}</td>
+                      <td className="py-3.5 px-4">
+                        <span
+                          className={`text-[11px] font-bold px-2 py-0.5 rounded ${
+                            s.admissionStatus === "ACTIVE"
+                              ? "bg-[#edf8ef] text-[#166534]"
+                              : "bg-[#f2f2f0] text-[#666]"
+                          }`}
+                        >
+                          {s.admissionStatus}
                         </span>
-                      ) : (
-                        <span className="text-[12px] text-[#a3a3a3]">—</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-right">
-                      <Link
-                        href={`/faculty/scholars/${s.scholarId}`}
-                        className="font-bold text-[12.5px] text-[#16a34a] hover:underline"
-                      >
-                        View Full History →
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {s.activeSubmission ? (
+                          <div>
+                            <span className="font-mono text-[12px] font-bold text-[#171717]">
+                              {s.activeSubmission.submissionReference} (v{s.activeSubmission.currentVersion})
+                            </span>
+                            <span className="block text-[11px] text-[#666] truncate max-w-xs">
+                              {s.activeSubmission.title}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-[12px] text-[#a3a3a3]">No submission yet</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {s.activeSubmission?.currentStage ? (
+                          <span className="bg-[#fff7e6] text-[#8a570d] text-[11px] font-bold px-2 py-0.5 rounded">
+                            {s.activeSubmission.currentStage}
+                          </span>
+                        ) : (
+                          <span className="text-[12px] text-[#a3a3a3]">—</span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        {targetId ? (
+                          <Link
+                            href={`/faculty/scholars/${targetId}`}
+                            className="font-bold text-[12.5px] text-[#16a34a] hover:underline"
+                          >
+                            View Full History →
+                          </Link>
+                        ) : (
+                          <span className="text-[#999] text-[12px] italic">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

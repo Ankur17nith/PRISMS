@@ -249,30 +249,38 @@ export default function FacultyDashboardPage() {
             <p className="text-[13px] text-[#666]">No assigned research scholars on record.</p>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {scholars.map((s) => (
-                <div key={s.scholarId} className="p-4 border border-[#e2e2df] rounded-[6px] bg-[#fafaf9]">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="font-bold text-[14px] text-[#171717]">{s.fullName}</h4>
-                      <p className="text-[12px] text-[#666]">Roll: {s.rollNumber} · {s.program}</p>
+              {scholars.map((s, idx) => {
+                const sid = s.scholarId || s.studentId || s.rollNumber || `scholar-${idx}`;
+                const targetId = s.scholarId || s.studentId;
+                return (
+                  <div key={sid} className="p-4 border border-[#e2e2df] rounded-[6px] bg-[#fafaf9]">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <h4 className="font-bold text-[14px] text-[#171717]">{s.fullName}</h4>
+                        <p className="text-[12px] text-[#666]">Roll: {s.rollNumber} · {s.program}</p>
+                      </div>
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-[#edf8ef] text-[#166534]">
+                        {s.admissionStatus}
+                      </span>
                     </div>
-                    <span className="text-[11px] font-bold px-2 py-0.5 rounded bg-[#edf8ef] text-[#166534]">
-                      {s.admissionStatus}
-                    </span>
+                    <div className="mt-3 pt-2 border-t border-[#e2e2df] flex items-center justify-between text-[12px]">
+                      <span className="text-[#666]">
+                        {s.activeSubmission ? `Thesis: ${s.activeSubmission.status}` : "No active submission"}
+                      </span>
+                      {targetId ? (
+                        <Link
+                          href={`/faculty/scholars/${targetId}`}
+                          className="font-bold text-[#16a34a] hover:underline"
+                        >
+                          View Scholar Record →
+                        </Link>
+                      ) : (
+                        <span className="text-[#999] italic">Record unavailable</span>
+                      )}
+                    </div>
                   </div>
-                  <div className="mt-3 pt-2 border-t border-[#e2e2df] flex items-center justify-between text-[12px]">
-                    <span className="text-[#666]">
-                      {s.activeSubmission ? `Thesis: ${s.activeSubmission.status}` : "No active submission"}
-                    </span>
-                    <Link
-                      href={`/faculty/scholars/${s.scholarId}`}
-                      className="font-bold text-[#16a34a] hover:underline"
-                    >
-                      View Scholar Record →
-                    </Link>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
