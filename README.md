@@ -1,18 +1,18 @@
 # PRISMS — PhD Research & Institutional Scholars Management System
 
-Production-ready backend for PhD thesis submission, workflow routing, approval orchestration, revision loops, and secure document management at NIT Hamirpur.
+A robust, enterprise-grade full-stack platform for doctoral thesis submission, institutional workflow routing, multi-branch approval orchestration, immutable revision loops, and statutory document management at the **National Institute of Technology Hamirpur (NIT Hamirpur)**.
 
 ---
 
 ## 1. Project Overview & Architecture
 
 PRISMS provides a secure, auditable, and multi-stage academic workflow engine:
-1. **Student Submission:** Authenticated doctoral scholars manage drafts, upload thesis PDFs into private filesystem storage with SHA-256 integrity checks, and formally submit their thesis.
+1. **Student Submission:** Authenticated doctoral scholars manage dissertation metadata, upload thesis PDFs into private filesystem storage with SHA-256 integrity verification, and formally submit their thesis.
 2. **Supervisor Review:** Assigned supervisors inspect thesis versions, read comments, and forward to authorized departmental HODs, or return for revisions.
-3. **Departmental & HOD Review:** Head of Department reviews the thesis inline within the portal. **HOD is strictly prohibited from downloading thesis documents.** HOD can forward to Chairperson SDPC, Dean Academics, or both in parallel.
-4. **Institutional Parallel Review:** Chairperson SDPC and Dean Academics review independently. Revisions or rejections halt parallel branches safely.
-5. **Final Senate Approval:** Chairperson Senate grants final approval (`APPROVED`), transitioning the thesis to `CLOSED` and recording formal academic completion.
-6. **Revision & History Tracking:** Returned theses allow scholar resubmission (creating immutable new versions `N+1`) while preserving all prior drafts, files, and remarks.
+3. **Departmental & HOD Review:** Head of Department reviews the thesis inline within the portal. **In accordance with NIT Hamirpur statutory ordinances, HOD review access is strictly view-only; file downloading is prohibited and enforced at the server level.**
+4. **Parallel Institutional Review:** HOD can route submissions to Chairperson SDPC, Dean Academics, or both in parallel. When parallel branches are initiated, the engine synchronizes branch completion so that Senate Review is created only when all parallel reviews have finished.
+5. **Final Senate Approval:** Chairperson Senate grants final institutional approval (`APPROVED`), transitioning the thesis to `CLOSED` and recording formal academic completion.
+6. **Revision & History Tracking:** Returned theses allow scholar resubmission (creating immutable new versions `N+1`) while preserving all prior drafts, files, decisions, and remarks.
 7. **Supervisor Scholar Dashboard:** Supervisors can track current and completed scholars, review timelines, and view full submission dossiers with pagination and search.
 
 ---
@@ -25,14 +25,16 @@ PRISMS provides a secure, auditable, and multi-stage academic workflow engine:
 - **Database & ORM:** PostgreSQL 16+ with Prisma ORM 6.x
 - **Authentication:** Argon2id password hashing, short-lived JWT access tokens, rotating opaque refresh tokens stored as SHA-256 hashes in `sessions` table
 - **File Upload & Storage:** Multer memory storage, magic bytes signature validation (`%PDF-`), SHA-256 checksums, private filesystem storage outside web root
+- **Document Streaming:** HTTP 206 Partial Content byte-range streaming (`Accept-Ranges: bytes`) for fast, progressive loading of multi-hundred page PDFs
 - **Validation & Security:** Zod schemas, Helmet, CORS, Express-Rate-Limit, central error handler
 - **Testing:** Node.js native test runner (`node:test`, `node:assert/strict`) with Supertest
 
 ### Frontend
 - **Framework & Runtime:** Next.js 15.2.1 (App Router), React 19, TypeScript 5.8
 - **Styling & Design System:** Tailwind CSS 3.4 with custom NIT Hamirpur color tokens (Surface `#f7f7f6`, Charcoal `#171717`, Brand Gold `#daa32f`, Primary Green `#16a34a`)
-- **Visual Design Source:** Figma File `SKPTGM8RvLhsCdfYotKCpb` (9 top-level canvas pages faithfully mapped)
-- **Architecture:** Responsive application shell, bilingual institutional branding (English & Hindi), dynamic multi-role context switcher, resilient API client with mock fallback for demo stability
+- **Document Viewer:** Custom `ThesisBookReader` backed by a local PDF.js 6.4 web worker (`/pdf.worker.min.mjs`), with render cancellation promises and statutory download controls
+- **Visual Design Source:** Faithfully mapped from Figma file `SKPTGM8RvLhsCdfYotKCpb`
+- **Architecture:** Responsive application shell, bilingual institutional branding (English & Hindi), dynamic multi-role context switcher, resilient API client
 
 ---
 
@@ -42,7 +44,7 @@ PRISMS provides a secure, auditable, and multi-stage academic workflow engine:
 PRISMS/
 ├── backend/
 │   ├── prisma/
-│   │   ├── schema.prisma           # Canonical database schema
+│   │   ├── schema.prisma           # Canonical PostgreSQL database schema
 │   │   ├── migrations/             # Applied PostgreSQL migrations
 │   │   └── seed.ts                 # Idempotent dev seed script (CSE department + accounts)
 │   ├── src/
@@ -52,14 +54,14 @@ PRISMS/
 │   │   │   └── env.ts              # Validated environment variables (Zod)
 │   │   ├── lib/
 │   │   │   ├── prisma.ts           # PrismaClient singleton instance
-│   │   │   ├── storage.ts          # Private storage, PDF magic bytes & path traversal protection
+│   │   │   ├── storage.ts          # Private storage, PDF magic bytes & byte-range streaming
 │   │   │   ├── audit.ts            # Audit logging to audit_events table
 │   │   │   ├── errors.ts           # AppError class
 │   │   │   └── mailer.ts           # SMTP / console mail dispatcher
 │   │   ├── middleware/
-│   │   │   ├── auth.ts             # requireAuth, requireRole, AuthContext
+│   │   │   ├── auth.ts             # requireAuth, requireRole, AuthContext, role verification
 │   │   │   ├── errorHandler.ts     # Centralized error handler
-│   │   │   └── validate.ts         # Zod request body validation middleware
+│   │   │   └── validate.ts         # Zod request validation middleware
 │   │   ├── modules/
 │   │   │   ├── auth/               # Signup, login, refresh, password reset
 │   │   │   └── thesis/             # Submission, workflow routing, file view/download, tracking
@@ -67,25 +69,31 @@ PRISMS/
 │   ├── storage/theses/             # Private thesis PDF storage (gitignored)
 │   ├── .env.example                # Example environment configuration
 │   └── package.json
-├── frontend/                       # Next.js 15 Figma-guided UI application
-│   ├── public/assets/              # Official NITH logo & SVG vector icon library
+├── frontend/                       # Next.js 15 App Router application
+│   ├── public/
+│   │   ├── assets/                 # Official NITH logo & SVG vector icon library
+│   │   └── pdf.worker.min.mjs      # Bundled local PDF.js worker
 │   ├── src/
-│   │   ├── app/                    # 27 App Router routes (Student, Faculty, Public)
+│   │   ├── app/                    # 28 App Router routes (Student, Faculty, Public)
 │   │   │   ├── student/            # Student Portal (dashboard, submit wizard, details, history...)
 │   │   │   ├── faculty/            # Faculty Portal (dashboard, queue, reviews, hod, scholars...)
 │   │   │   ├── login/              # Multi-role authentication & context switcher
 │   │   │   └── page.tsx            # Institutional landing page
 │   │   ├── components/             # Reusable UI components & ApplicationShell
-│   │   └── lib/                    # api.ts (backend client & mock fallback), auth.tsx context
+│   │   └── lib/                    # api.ts (backend client), auth.tsx context, statusHelper.ts
 │   ├── tailwind.config.ts          # Extracted Figma tokens
 │   └── package.json
 ├── docs/
-│   ├── API.md                      # Complete REST API reference
-│   ├── FRONTEND_FIGMA_MAPPING.md   # Figma node mapping, color tokens, and 27-route directory
-│   ├── THESIS_WORKFLOW.md          # State machine, sequence, and Mermaid diagrams
-│   ├── AUTHORITY_ROUTING.md        # Authority matrix & recipient resolution rules
+│   ├── ARCHITECTURE.md             # System architecture & component breakdown
+│   ├── API.md                      # Comprehensive REST API reference & error codes
+│   ├── openapi.yaml                # OpenAPI 3.1 REST API specification
+│   ├── THESIS_WORKFLOW.md          # State machine, sequence, and parallel convergence
+│   ├── DATABASE.md                 # PostgreSQL schema, Prisma models, indexes, and relations
+│   ├── DEVELOPMENT.md              # Local development setup and troubleshooting
+│   ├── TESTING.md                  # Automated test guide & verified execution report
+│   ├── AUTHORITY_ROUTING.md        # Authority matrix & dynamic recipient resolution rules
 │   ├── SECURITY.md                 # Security architecture, controls, and viewer limitations
-│   └── TESTING.md                  # Automated test guide & verified execution report
+│   └── FRONTEND_FIGMA_MAPPING.md   # Figma design-to-route mapping
 ├── compose.yaml                    # PostgreSQL service definition
 └── README.md
 ```
@@ -95,187 +103,110 @@ PRISMS/
 ## 4. Getting Started
 
 ### 4.1 Prerequisites
-- **Node.js:** v22.x or later
-- **PostgreSQL:** v16+ (local service, or via Docker/Podman using `compose.yaml`)
+- **Node.js:** v22.x or later (`node -v` >= 22.0.0)
+- **npm:** v10.x or later
+- **PostgreSQL:** v16.x or later (running locally on port 5433 or via Docker)
 
-### 4.2 Local Environment Setup
-From `backend/`:
+### 4.2 Local Setup
 
-1. Copy the example environment file:
+1. **Install Dependencies:**
    ```bash
-   cp .env.example .env
+   npm --prefix backend install
+   npm --prefix frontend install
    ```
 
-2. Configure environment variables in `backend/.env`:
+2. **Configure Environment:**
+   Create `backend/.env` (referencing `backend/.env.example`):
    ```ini
-   DATABASE_URL="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms?schema=public"
+   PORT=5000
+   FRONTEND_URL="http://localhost:3000"
+   DATABASE_URL="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms?schema=public&host=/tmp"
+   DATABASE_URL_TEST="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms_test?schema=public&host=/tmp"
    JWT_ACCESS_SECRET="prisms-development-jwt-access-secret-32-chars-minimum-key"
+   JWT_REFRESH_SECRET="prisms-development-jwt-refresh-secret-32-chars-minimum-key"
    MAX_THESIS_FILE_SIZE_BYTES=20971520
    THESIS_STORAGE_PATH="./storage/theses"
-   FRONTEND_URL="http://localhost:3000"
-   PORT=4000
+   NODE_ENV="development"
    ```
 
-### 4.3 Database Setup, Migrations & Seeding
-```bash
-# 1. Install dependencies
-npm install
+3. **Deploy Migrations & Seed:**
+   ```bash
+   npm --prefix backend run prisma:generate
+   npm --prefix backend run prisma:migrate:deploy
+   npm --prefix backend run seed
+   ```
 
-# 2. Generate Prisma Client
-npx prisma generate
+4. **Start Development Servers:**
+   ```bash
+   # Terminal 1: Backend API (http://localhost:5000)
+   npm --prefix backend run dev
 
-# 3. Apply migrations to PostgreSQL
-npx prisma migrate deploy
-
-# 4. Seed development accounts & workflow stages
-npm run seed
-```
-
-### 4.4 Running the Application
-
-#### Backend (Port 4000)
-```bash
-cd backend
-
-# Start development server with live reload
-npm run dev
-
-# Compile TypeScript
-npm run build
-
-# Start production server
-npm start
-```
-The backend API listens on `http://localhost:4000`.
-
-#### Frontend (Port 3000)
-```bash
-cd frontend
-
-# Install dependencies (if not already done)
-npm install
-
-# Start Next.js development server
-npm run dev
-
-# Type check
-npm run typecheck
-
-# Build for production (pre-renders all 27 routes)
-npm run build
-
-# Start production server
-npm start
-```
-The PRISMS web application is available at `http://localhost:3000`.
+   # Terminal 2: Frontend (http://localhost:3000)
+   npm --prefix frontend run dev
+   ```
 
 ---
 
-## 5. Development Accounts (Seed Data)
+## 5. Seed Accounts
 
-The seed script creates the **CSE Department**, 11 roles, 5 workflow stages, and these development accounts with default password `ChangeMe-Dev-123` (or `SEED_PASSWORD`):
+Default development accounts configured with password `Password123!`:
 
-| Email | Role Code | Scope | Notes |
+| Portal / Role | Email | Name | Scope / Department |
 |:---|:---|:---|:---|
-| `student1@example.test` | `STUDENT` | CSE Dept | Supervised by `supervisor1`, Roll: `21PHDCSE01` |
-| `student2@example.test` | `STUDENT` | CSE Dept | Supervised by `supervisor2`, Roll: `21PHDCSE02` |
-| `supervisor1@example.test`| `SUPERVISOR`| CSE Dept | Associate Professor FAC001 |
-| `supervisor2@example.test`| `SUPERVISOR`| CSE Dept | Professor FAC002 |
-| `hod.cse@example.test` | `HOD` | CSE Dept | **Strict download prohibition** |
-| `ddpc.cse@example.test`| `DDPC` | CSE Dept | Observer visibility on departmental submissions |
-| `sdpc@example.test` | `CHAIRPERSON_SDPC` | Institute | Senate Doctoral Programme Committee Chair |
-| `dean@example.test` | `DEAN_ACADEMICS` | Institute | Dean of Academic Affairs |
-| `chairman@example.test` | `CHAIRPERSON_SENATE` | Institute | Director & Chairman Senate (Final Approval) |
-| `admin@example.test` | `ADMIN` | Institute | Portal Administrator |
+| **Scholar 1** | `aarav.sharma@example.test` | Aarav Sharma | PhD Scholar (`21PHDCSE01`) |
+| **Scholar 2** | `sneha.patel@example.test` | Sneha Patel | PhD Scholar (`21PHDCSE02`) |
+| **Supervisor 1** | `supervisor1@example.test`| Dr. Rajesh Kumar | CSE Faculty |
+| **HOD** | `hod.cse@example.test` | Prof. Anil Verma | Head, Dept. of CSE *(Strictly View-Only)* |
+| **Chairperson SDPC** | `sdpc@example.test` | Dr. Vikram Malhotra | Senate Degree Review |
+| **Dean Academics** | `dean.acad@example.test` | Prof. Sanjay Gupta | Office of Dean (Academic) |
+| **Chairperson Senate**| `senate.chair@example.test`| Director | Senate Final Approval Authority |
+| **Admin** | `admin@example.test` | Administrator | Institutional IT |
 
 ---
 
-## 6. Thesis Lifecycle & Permission Summary
+## 6. Testing & Quality Verification
 
-```
-Student Draft ──► Upload PDF ──► Formal Submit ──► Stage 1: Supervisor Review
-                                                         │
-                        ┌────────────────────────────────┴──────────────────────┐
-                        ▼                                                       ▼
-               Return / Revision                                      Forward to HOD (CSE)
-                        ▲                                                       │
-                        │                                                       ▼
-                Student Resubmits                                     Stage 2: HOD Review
-                   (Version N+1)                                     (View Only - NO DOWNLOAD)
-                        ▲                                                       │
-                        │                                ┌──────────────────────┴──────────────────────┐
-                        │                                ▼                                             ▼
-                        │                      Stage 3A: SDPC Review                         Stage 3B: Dean Academics
-                        │                                │                                             │
-                        │                                └──────────────────────┬──────────────────────┘
-                        │                                                       ▼
-                        └───────────────────────────────────────────── Stage 4: Senate Review
-                                                                                │
-                                                                                ▼
-                                                                       FINAL APPROVAL (CLOSED)
-```
-
-### Key Permission Policies:
-- **HOD Download Prohibition:** Under no circumstances can an HOD download thesis documents. Only inline in-portal viewing is permitted.
-- **Dynamic Recipient Resolution:** Forwarding recipients are computed server-side based on the scholar's department and institutional role assignments.
-- **Multiple Roles:** Faculty members holding multiple roles (e.g. HOD and Supervisor) are scoped by the context of the thesis submission.
-
----
-
-## 7. Testing & Quality Assurance
-
-PRISMS features an automated integration and security test suite using Node.js native test runner and Supertest against a dedicated, isolated test database (`prisms_test`).
-
-Run tests from `backend/`:
+Run the automated integration and security test suite from `backend/`:
 ```bash
-npm test
+npm --prefix backend test
 ```
 
 ### Verified Test Results:
-- **44/44 passing tests (0 failures)** covering:
-  - Student draft, PDF signature verification, file size limits, IDOR protection
-  - Supervisor queue, HOD dynamic recipient resolution, forwarding
-  - DDPC observer access and restriction enforcement
-  - In-portal inline viewing vs download authorization
-  - **Strict HOD download denial enforcement (including multi-role contexts and `role=HOD` query parameter rejection)**
-  - Unauthorized and unassigned faculty inline viewing rejection (403)
-  - Safe 404 response on invalid or non-existent fileId
-  - Parallel forwarding to both SDPC and Dean Academics
-  - Return for revision with mandatory remarks, student feedback visibility
-  - Multi-version resubmission (Version 1 -> Version 2)
-  - Senate final approval and thesis closure
-  - Formal rejection lifecycle
-  - Supervisor scholar tracking dashboard and pagination
-  - Single account multi-role validation
-  - Audit log persistence
-
-For detailed test documentation and suite breakdown, see [`docs/TESTING.md`](file:///home/ankurgupta/PRISMS/docs/TESTING.md).
+- **66/66 passing tests (0 failures)** across 13 suites:
+  - Suite A: Student Submission & Draft Pre-validation
+  - Suite B: Supervisor Review & HOD Recipient Dynamic Resolution
+  - Suite C: DDPC Observer Access Controls
+  - Suite D: HOD Evaluation & Mandatory Statutory Download Denial
+  - Suite E: Return for Revision with Feedback Release
+  - Suite F: Multi-Version Progression to Final Senate Approval
+  - Suite G: Scholar History Dossier & Paginated Tracking
+  - Suite H: Formal Rejection State Machine
+  - Suite I: File Size Upload Enforcements (20 MiB limit)
+  - Suite J: Multi-Role Context Switching & Active Role Verification
+  - Suite K: Audit Trail Logging & Denied Event Recording
+  - Suite L: Parallel Branch Synchronization & Senate Review Convergence
+  - Suite M: Byte-Range Document Streaming (HTTP 206) & PDF Viewer Security
 
 ---
 
-## 8. Technical Documentation Directory
+## 7. Documentation Directory
 
-- [`docs/FRONTEND_FIGMA_MAPPING.md`](file:///home/ankurgupta/PRISMS/docs/FRONTEND_FIGMA_MAPPING.md): Figma node-to-route mapping, color and typography token definitions, and 27-route directory.
-- [`docs/API.md`](file:///home/ankurgupta/PRISMS/docs/API.md): Comprehensive REST API endpoint reference with request/response examples.
-- [`docs/THESIS_WORKFLOW.md`](file:///home/ankurgupta/PRISMS/docs/THESIS_WORKFLOW.md): Workflow engine specification, Mermaid diagrams, and state transitions.
-- [`docs/AUTHORITY_ROUTING.md`](file:///home/ankurgupta/PRISMS/docs/AUTHORITY_ROUTING.md): Authority matrix, permission rules, and recipient resolution logic.
-- [`docs/SECURITY.md`](file:///home/ankurgupta/PRISMS/docs/SECURITY.md): Security controls, IDOR prevention, private storage, and viewer limitations.
+- [`docs/ARCHITECTURE.md`](file:///home/ankurgupta/PRISMS/docs/ARCHITECTURE.md): System architecture, module decomposition, and security boundaries.
+- [`docs/API.md`](file:///home/ankurgupta/PRISMS/docs/API.md): Comprehensive REST API endpoint reference and error code matrix.
+- [`docs/openapi.yaml`](file:///home/ankurgupta/PRISMS/docs/openapi.yaml): Full OpenAPI 3.1 specification for API consumers and tooling.
+- [`docs/THESIS_WORKFLOW.md`](file:///home/ankurgupta/PRISMS/docs/THESIS_WORKFLOW.md): Workflow engine specification, sequence diagrams, and parallel convergence logic.
+- [`docs/DATABASE.md`](file:///home/ankurgupta/PRISMS/docs/DATABASE.md): PostgreSQL database schema, Prisma models, indexes, and relations.
+- [`docs/DEVELOPMENT.md`](file:///home/ankurgupta/PRISMS/docs/DEVELOPMENT.md): Local development setup, environment configuration, and troubleshooting.
 - [`docs/TESTING.md`](file:///home/ankurgupta/PRISMS/docs/TESTING.md): Testing guide and automated test report.
+- [`docs/AUTHORITY_ROUTING.md`](file:///home/ankurgupta/PRISMS/docs/AUTHORITY_ROUTING.md): Authority matrix, permission rules, and dynamic recipient resolution logic.
+- [`docs/SECURITY.md`](file:///home/ankurgupta/PRISMS/docs/SECURITY.md): Security controls, IDOR prevention, private storage, and viewer limitations.
+- [`docs/FRONTEND_FIGMA_MAPPING.md`](file:///home/ankurgupta/PRISMS/docs/FRONTEND_FIGMA_MAPPING.md): Figma node-to-route mapping and design token directory.
 
 ---
 
-## 9. Development & System Credits
+## 8. Development & System Credits
 
 PRISMS was designed and engineered for the National Institute of Technology Hamirpur by:
 
 - **Ankur Gupta** · [Portfolio](https://ankur-portfolio-topaz.vercel.app/) · Department of Computer Science & Engineering
 - **Aditya Sharma** · [GitHub](https://github.com/itzzadi04) · Department of Computer Science & Engineering
-
----
-
-## 10. Notes for Production Deployment
-
-1. **Storage Provider:** While local private filesystem storage is configured for development, production can bind `THESIS_STORAGE_PATH` to a persistent private volume (e.g. NFS / private EBS) or an S3-compatible private bucket adapter.
-2. **Reverse Proxy:** Terminate SSL/TLS at Nginx/Caddy and configure `client_max_body_size 25M` to accommodate the 20 MiB thesis limit.
-3. **Malware Scanning:** An asynchronous ClamAV / VirusTotal scanner can poll `thesis_files` where `scan_status = 'PENDING'`, updating status to `'CLEAN'` or `'QUARANTINED'`.
-4. **Secrets:** Supply strong random strings for `JWT_ACCESS_SECRET` and database credentials through container secrets or vault environments. Never commit `.env`.
