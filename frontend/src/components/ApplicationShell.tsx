@@ -30,12 +30,31 @@ export function ApplicationShell({ portalType, breadcrumb, children }: Applicati
     { label: "Help & Support", href: "/student/help", icon: "/assets/icon-home.svg" },
   ];
 
-  // Faculty links
+  // Role-Aware Faculty Navigation Items
+  const isHod = activeRole === "HOD";
+  const isInstitute = ["CHAIRPERSON_SDPC", "SDPC", "DEAN_ACADEMICS", "DEAN", "CHAIRPERSON_SENATE", "CHAIRMAN"].includes(activeRole || "");
+
   const facultyNavItems = [
-    { label: "Dashboard", href: "/faculty/dashboard", icon: "/assets/icon-dashboard.svg" },
-    { label: "Approval Queue", href: "/faculty/queue", icon: "/assets/icon-user.svg" },
+    {
+      label: isHod ? "HOD Dashboard" : isInstitute ? "Authority Dashboard" : "Supervisor Dashboard",
+      href: "/faculty/dashboard",
+      icon: "/assets/icon-dashboard.svg",
+    },
+    {
+      label: isHod ? "Department Queue" : isInstitute ? "Statutory Queue" : "Approval Queue",
+      href: "/faculty/queue",
+      icon: "/assets/icon-user.svg",
+    },
     { label: "Thesis Reviews", href: "/faculty/reviews", icon: "/assets/icon-book.svg" },
-    { label: "My Research Scholars", href: "/faculty/scholars", icon: "/assets/icon-file-up.svg" },
+    ...(isHod || !isInstitute
+      ? [
+          {
+            label: isHod ? "Department Scholars" : "My Research Scholars",
+            href: "/faculty/scholars",
+            icon: "/assets/icon-file-up.svg",
+          },
+        ]
+      : []),
     { label: "Activity History", href: "/faculty/history", icon: "/assets/icon-history.svg" },
     { label: "Notifications (2)", href: "/faculty/notifications", icon: "/assets/icon-notifications.svg" },
     { label: "Documents & Guidelines", href: "/faculty/documents", icon: "/assets/icon-folder.svg" },
@@ -113,38 +132,45 @@ export function ApplicationShell({ portalType, breadcrumb, children }: Applicati
         </div>
 
         <div className="flex items-center gap-4 mt-1 sm:mt-0">
-          {/* Multiple Roles Switcher */}
-          {user && user.roles && user.roles.length > 1 && (
-            <div className="relative">
-              <button
-                onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-                className="bg-[#171717] text-[#daa32f] px-2.5 py-0.5 rounded text-[11.5px] font-bold flex items-center gap-1 shadow-sm"
-              >
-                Role: {activeRole || user.roles[0].code} ▾
-              </button>
-              {roleMenuOpen && (
-                <div className="absolute right-0 mt-1 w-48 bg-white border border-[#e2e2df] rounded shadow-lg z-50 py-1 text-[#303030]">
-                  <div className="px-3 py-1 text-[11px] font-bold text-[#666] border-b border-[#f2f2f0]">
-                    Select Active Role
+          {/* Role Context & Switcher */}
+          {user && user.roles && (
+            user.roles.length > 1 ? (
+              <div className="relative">
+                <button
+                  onClick={() => setRoleMenuOpen(!roleMenuOpen)}
+                  className="bg-[#171717] text-[#daa32f] px-2.5 py-0.5 rounded text-[11.5px] font-bold flex items-center gap-1 shadow-sm hover:bg-[#262626] transition cursor-pointer"
+                >
+                  Role: {activeRole || user.roles[0].code} ▾
+                </button>
+                {roleMenuOpen && (
+                  <div className="absolute right-0 mt-1 w-52 bg-white border border-[#e2e2df] rounded shadow-lg z-50 py-1 text-[#303030]">
+                    <div className="px-3 py-1.5 text-[11px] font-bold text-[#666] border-b border-[#f2f2f0] flex justify-between items-center">
+                      <span>Switch Authority Role</span>
+                      <span className="text-[10px] bg-[#f2f2f0] px-1.5 py-0.5 rounded font-mono">{user.roles.length} Roles</span>
+                    </div>
+                    {user.roles.map((r) => (
+                      <button
+                        key={r.id}
+                        onClick={() => {
+                          setActiveRole(r.code);
+                          setRoleMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#f2f2f0] flex items-center justify-between transition cursor-pointer ${
+                          activeRole === r.code ? "font-bold text-[#166534] bg-[#edf8ef]" : ""
+                        }`}
+                      >
+                        <span className="truncate pr-2">{r.name}</span>
+                        <span className="text-[10px] text-[#666] font-mono shrink-0">{r.code}</span>
+                      </button>
+                    ))}
                   </div>
-                  {user.roles.map((r) => (
-                    <button
-                      key={r.id}
-                      onClick={() => {
-                        setActiveRole(r.code);
-                        setRoleMenuOpen(false);
-                      }}
-                      className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-[#f2f2f0] flex items-center justify-between ${
-                        activeRole === r.code ? "font-bold text-[#166534] bg-[#edf8ef]" : ""
-                      }`}
-                    >
-                      <span>{r.name}</span>
-                      <span className="text-[10px] text-[#a3a3a3]">{r.code}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              <span className="bg-[#171717] text-[#daa32f] px-2.5 py-0.5 rounded text-[11.5px] font-bold shadow-sm">
+                Role: {activeRole || user.roles[0]?.code}
+              </span>
+            )
           )}
 
           {user ? (
