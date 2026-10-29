@@ -418,33 +418,52 @@ All application errors follow a unified structure:
 ### 6.1 Inline Portal PDF Streaming
 - **Method:** `GET`
 - **Path:** `/theses/:submissionId/file/view`
-- **Auth:** Required (Scholar, Assigned Reviewer, Supervisor, DDPC, Admin)
+- **Auth:** Required (`STUDENT`, `SUPERVISOR`, `HOD`, `DDPC`, `SDPC`, `DEAN_ACADEMICS`, `CHAIRPERSON_SENATE`, `ADMIN`)
 - **Query Parameters:**
-  - `fileId`: Specific version file UUID (defaults to latest)
-  - `role`: Claimed active role context
+  - `fileId`: Specific version file UUID (defaults to the latest uploaded version)
+  - `role`: Optional claimed active role context (validated against user's actual assigned roles)
 - **Headers Returned:**
   - `Content-Type: application/pdf`
   - `Content-Disposition: inline; filename="original_name.pdf"`
   - `Cache-Control: private, no-store, must-revalidate`
   - `X-Content-Type-Options: nosniff`
   - `Accept-Ranges: bytes`
-- **Byte-Range Support (HTTP 206):**
-  - Clients (e.g. PDF.js) can send `Range: bytes=start-end`.
-  - Server responds with `206 Partial Content`, `Content-Range: bytes start-end/totalSize`, and `Content-Length: chunkSize`.
-  - Enables streaming multi-hundred page dissertations (e.g. 627+ pages) without out-of-memory errors.
+- **Byte-Range Support (HTTP 206 Partial Content):**
+  - Clients (e.g. PDF.js reader) stream document pages on demand by sending `Range: bytes=start-end`.
+  - The server verifies range bounds and responds with `206 Partial Content`, `Content-Range: bytes start-end/totalSize`, and `Content-Length: chunkSize`.
+  - Enables fluid in-browser reading of extensive 600+ page dissertations without memory exhaustion.
+- **In-Portal Reader Integration (`ThesisBookReader`):**
+  - **Offline WASM & Font Assets:** PDF.js runs with a locally hosted web worker (`/pdf.worker.min.mjs`), WebAssembly image decoders (`/wasm/jbig2.wasm`, `/wasm/openjpeg.wasm`), CMap glyph tables (`/cmaps/`), and Standard Fonts (`/standard_fonts/`), ensuring zero external CDN dependencies and complete offline decoding of JBIG2/monochrome scanned pages.
+  - **Responsive Sizing & Auto-Fit:** Sizing uses a `ResizeObserver` on the viewer container. Available width (`containerWidth - 48px`) is dynamically matched against unscaled page dimensions (`page.getViewport({ scale: 1 }).width`) to compute fit scale without horizontal scroll overflow.
+  - **Measurable Canvas Dimensions:** Explicit, non-zero measurable width and height are assigned to `<canvas>` elements before rendering. Pre-layout rendering calls with zero or negative container width are deferred until layout stabilizes.
+  - **Negative Coordinate Clipping Prevention:** Inner canvas wrapper uses centered margin layout (`m-auto min-w-fit`) within an `overflow-auto flex flex-col` viewport. When zoomed in past container bounds, scroll origin remains strictly at `x = 0`, ensuring complete left margin visibility.
+  - **Sequential Render Coordination:** Render operations are managed via sequence tokens (`renderSeqRef`) and cancellation promises (`renderTaskRef.cancel()`). Rapid page jumping or zoom changes abort in-flight rendering safely without canvas collision errors.
 
 ### 6.2 Thesis Document Download
 - **Method:** `GET`
 - **Path:** `/theses/:submissionId/file/download`
 - **Auth:** Required
-- **STATUTORY RESTRICTION RULE:**
-  - In strict accordance with NIT Hamirpur regulations, **Head of Department (HOD) review access is confined to secure in-portal reading**.
-  - Any download request made while acting as HOD is denied with **HTTP 403 Forbidden** (`DOWNLOAD_FORBIDDEN_FOR_ROLE`).
-  - Permitted roles: Scholar, Assigned Supervisor, DDPC, SDPC, Dean Academics, Chairperson Senate.
-- **Headers Returned (when authorized):**
-  - `Content-Disposition: attachment; filename="original_name.pdf"`
-  - `Content-Length: totalSize`
-  - `Accept-Ranges: bytes`
+- **Query Parameters:**
+  - `fileId`: Specific version file UUID (defaults to primary/latest)
+  - `role`: Claimed active role context (checked against user profile and stage assignments)
+- **Supervisor Download Permission:**
+  - **Authorized Assigned Supervisors** possess full statutory authority to download thesis PDF documents for archival and in-depth offline annotation.
+  - Prominent **Download PDF** action buttons are provided directly on the Supervisor Review Workspace (`/faculty/reviews/[id]`), the Dedicated Reader (`/faculty/thesis/reader/[id]`), and inside the `ThesisBookReader` component.
+  - Initiates direct browser binary download with `Content-Disposition: attachment; filename="original_name.pdf"` and audit event recording (`thesis.file_downloaded`).
+- **STATUTORY RESTRICTION RULE (HOD Download Prohibition):**
+  - Under strict NIT Hamirpur academic statutes, **Head of Department (HOD) review access is strictly confined to secure in-portal reading**.
+  - Any download request made while acting as HOD, holding HOD stage assignment, or claiming HOD role context is unequivocally blocked by the backend with **HTTP 403 Forbidden** (`DOWNLOAD_FORBIDDEN_FOR_ROLE`).
+  - The frontend enforces this restriction by omitting the download button on HOD interfaces (`/faculty/reviews/[id]/hod`) and displaying a locked **View-Only Mode** institutional compliance badge.
+- **Role Permission Matrix for Download:**
+
+  | Role Context | In-Portal View (`/file/view`) | Direct Download (`/file/download`) | Enforcement Mechanism |
+  |:---|:---:|:---:|:---|
+  | Doctoral Student (Author) | Allowed | Allowed | Direct scholar access to own thesis |
+  | Assigned Supervisor | Allowed | Allowed | Authorized evaluation & archive access |
+  | Head of Department (HOD) | Allowed | **DENIED (403)** | Statutory restriction: `DOWNLOAD_FORBIDDEN_FOR_ROLE` |
+  | DDPC / Departmental Observer | Allowed | Allowed | Departmental oversight permission |
+  | SDPC / Dean Academics | Allowed | Allowed | Institutional authority permission |
+  | Unassigned Faculty / Foreign User | **DENIED (403)** | **DENIED (403)** | Role isolation & IDOR prevention |
 
 ---
 
