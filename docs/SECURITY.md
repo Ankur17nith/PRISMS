@@ -58,7 +58,20 @@ All file operations validate that `storageKey` contains no directory traversal e
 - **Multi-Role Enforcement:** Even if a faculty member holds multiple roles (e.g., HOD and Supervisor), when reviewing in the HOD stage or context of a departmental thesis, download requests are unconditionally denied with HTTP 403 `DOWNLOAD_FORBIDDEN_FOR_ROLE`. Only the student's designated individual research supervisor, author, or authorized institute authorities may download.
 - **Client-Side Neutrality:** Permissions are enforced authoritatively by backend controllers; frontend UI displays a statutory `🔒 View-Only Mode` badge and omits download triggers.
 
+### 3.6 Secure Inline Viewing & Download Permissions Matrix
+| Role | Inline Viewer Access | Direct PDF Download | Audit Event | Server Enforced Policy |
+|:---|:---:|:---:|:---|:---|
+| **Student (Author)** | Yes | Yes | `thesis.file_downloaded` | Permitted for own submissions only (IDOR protected) |
+| **Direct Supervisor** | Yes | Yes | `thesis.file_downloaded` | Permitted for actively supervised scholars |
+| **Head of Department (HOD)** | Yes | **NO (403 Forbidden)** | `thesis.file_download (DENIED)` | Statutory prohibition under NIT Hamirpur regulations |
+| **DDPC (Observer)** | Yes (Department) | **NO (403 Forbidden)** | `thesis.file_download (DENIED)` | Departmental observer rights only |
+| **Chairperson SDPC** | Yes | Yes | `thesis.file_downloaded` | Institute review authority |
+| **Dean Academics** | Yes | Yes | `thesis.file_downloaded` | Statutory academic authority |
+| **Chairperson Senate** | Yes | Yes | `thesis.file_downloaded` | Final approval authority |
+| **Unassigned Faculty** | **NO (403 Forbidden)** | **NO (403 Forbidden)** | `authz.role_check (DENIED)` | Strictly barred from access |
+
 ---
+
 
 ## 4. Audit Logging
 
