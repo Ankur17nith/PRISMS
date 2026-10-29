@@ -64,10 +64,12 @@ NODE_ENV=test npx tsx --test "src/**/*.test.ts"
 
 ## 4. Test Suite Coverage Summary
 
-The test suite in [`src/modules/thesis/thesis.test.ts`](file:///home/ankurgupta/PRISMS/backend/src/modules/thesis/thesis.test.ts) covers 66 comprehensive integration tests across 13 suites:
+The test suite in [`src/modules/thesis/thesis.test.ts`](file:///home/ankurgupta/PRISMS/backend/src/modules/thesis/thesis.test.ts) and adjacent test suites cover 70 comprehensive integration tests across 17 suites:
 
 | Suite | Category | Scenarios Covered | Status |
 |:---|:---|:---|:---:|
+| **Role Norm** | **Role Normalization** | Alias deduplication (`SDPC`, `DEAN`, `CHAIRMAN`), multi-role preservation. | **PASSED** |
+| **Reader** | **Canvas Concurrency** | Single page render, rapid jump cancellation, suppression of cancellation exceptions. | **PASSED** |
 | **A** | **Student Submission** | Unauthenticated rejection, draft metadata, empty file, non-PDF header signature rejection, authentic PDF upload & checksum, formal submission, concurrent submission prevention, IDOR protection. | **PASSED** |
 | **B** | **Supervisor Review** | Queue visibility, unassigned supervisor exclusion, submission inspection, dynamic HOD recipient resolution, forged recipient rejection, forwarding to HOD. | **PASSED** |
 | **C** | **DDPC Observer** | Departmental observer view access, transition execution rejection. | **PASSED** |
@@ -79,15 +81,16 @@ The test suite in [`src/modules/thesis/thesis.test.ts`](file:///home/ankurgupta/
 | **I** | **Upload Limits** | Rejection of files exceeding 20 MiB with HTTP 413. | **PASSED** |
 | **J** | **Multi-Role Faculty** | Aggregated roles per account, HOD download prohibition enforcement in multi-role context, explicit `role=HOD` query parameter rejection. | **PASSED** |
 | **K** | **Audit Trail** | Verification of persisted `AuditEvent` records for all lifecycle events and denied downloads. | **PASSED** |
-| **L** | **Parallel Branch Convergence** | Both SDPC and Dean review in parallel; forwarding one does not prematurely trigger Senate Review; Senate Review created only when all parallel branches finish. | **PASSED** |
-| **M** | **Document Access & Streaming** | Byte-range HTTP 206 streaming verification, active role header validation (`X-Active-Role`), rejection of spoofed active roles. | **PASSED** |
+| **L** | **Frontend Data Contracts** | Safe 404 for undefined parameters, serialized file sizes, scholar roster data contracts. | **PASSED** |
+| **M** | **Routing & Permissions** | Route aliases (`/recipients` & `/eligible-recipients`), reviewer access locks, student downloads. | **PASSED** |
+| **N** | **Regressions & Concurrency**| Strictly deduplicated HOD recipients across aliases, byte-range HTTP 206 streaming for PDF viewer, role-based download denial for spoofed roles, parallel SDPC/Dean branch convergence and Senate creation. | **PASSED** |
 
 ### Verified Test Run Result:
 ```text
 ✔ PRISMS Thesis Workflow & Security Integration Suite
-ℹ tests 66
-ℹ suites 13
-ℹ pass 66
+ℹ tests 70
+ℹ suites 17
+ℹ pass 70
 ℹ fail 0
 ℹ cancelled 0
 ℹ skipped 0

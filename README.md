@@ -172,7 +172,9 @@ npm --prefix backend test
 ```
 
 ### Verified Test Results:
-- **66/66 passing tests (0 failures)** across 13 suites:
+- **70/70 passing tests (0 failures)** across 17 suites:
+  - Role Normalization: Deduplication of role aliases (`SDPC`, `DEAN`, `CHAIRMAN`)
+  - Reader Concurrency: Canvas render cancellation and suppression of abort exceptions
   - Suite A: Student Submission & Draft Pre-validation
   - Suite B: Supervisor Review & HOD Recipient Dynamic Resolution
   - Suite C: DDPC Observer Access Controls
@@ -184,8 +186,9 @@ npm --prefix backend test
   - Suite I: File Size Upload Enforcements (20 MiB limit)
   - Suite J: Multi-Role Context Switching & Active Role Verification
   - Suite K: Audit Trail Logging & Denied Event Recording
-  - Suite L: Parallel Branch Synchronization & Senate Review Convergence
-  - Suite M: Byte-Range Document Streaming (HTTP 206) & PDF Viewer Security
+  - Suite L: Frontend Data Contracts & Serialized File Sizes
+  - Suite M: Dynamic Authority Routing & Document Viewing Permissions
+  - Suite N: Regressions: Parallel Branch Convergence, Recipient Deduplication, Byte-Range HTTP 206 Streaming & Spoofed Role Denial
 
 ---
 

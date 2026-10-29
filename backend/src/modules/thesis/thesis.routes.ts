@@ -199,14 +199,14 @@ router.get("/:submissionId/file/view", requireAuth, async (req, res) => {
   const rangeHeader = req.headers.range;
   if (rangeHeader && rangeHeader.startsWith("bytes=")) {
     const parts = rangeHeader.replace(/bytes=/, "").split("-");
-    const startStr = parts[0];
-    const endStr = parts[1];
+    const startStr = parts[0] ?? "";
+    const endStr = parts[1] ?? "";
 
-    let start = parseInt(startStr, 10);
+    let start = startStr ? parseInt(startStr, 10) : NaN;
     let end = endStr ? parseInt(endStr, 10) : totalSize - 1;
 
     if (isNaN(start)) {
-      start = totalSize - parseInt(endStr, 10);
+      start = endStr ? totalSize - parseInt(endStr, 10) : 0;
       end = totalSize - 1;
     }
 
