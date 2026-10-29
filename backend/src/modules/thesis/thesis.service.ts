@@ -809,6 +809,19 @@ export async function authorizeDocumentAccess(
 
   // 2. DOWNLOAD RESTRICTION (MANDATORY INSTITUTIONAL RULE)
   if (action === "download") {
+    // Validate that if client claims to act under a specific role, they actually hold that role
+    const activeRoleHeader = req?.headers["x-active-role"] as string | undefined;
+    const activeRoleQuery = req?.query?.role as string | undefined;
+    const requestedRole = activeRoleHeader || activeRoleQuery;
+    if (requestedRole) {
+      const hasClaimedRole = auth.roles.some(
+        (r) => normalizeRoleCode(r.code) === normalizeRoleCode(requestedRole),
+      );
+      if (!hasClaimedRole) {
+        throw new AppError(403, `User does not possess claimed role ${requestedRole}`, "ROLE_UNAUTHORIZED");
+      }
+    }
+
     // Check if the user is acting in HOD review mode or currently assigned to HOD review stage
     const isHodReviewAssignment = submission.stages.some(
       (st) =>
@@ -820,8 +833,8 @@ export async function authorizeDocumentAccess(
         ),
     );
     const isActingAsHod =
-      req?.headers["x-active-role"] === "HOD" ||
-      req?.query?.role === "HOD" ||
+      normalizeRoleCode(activeRoleHeader || "") === ROLES.HOD ||
+      normalizeRoleCode(activeRoleQuery || "") === ROLES.HOD ||
       isHodReviewAssignment;
 
     // Under NIT Hamirpur regulations, HOD review workflow or HOD role (unless also the assigned individual supervisor)
