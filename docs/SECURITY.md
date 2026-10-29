@@ -41,17 +41,22 @@ All file operations validate that `storageKey` contains no directory traversal e
 3. **Size Limit:** Server-side enforcement of `MAX_THESIS_FILE_SIZE_BYTES` (default 20 MiB). Files exceeding the limit are rejected with `413 Payload Too Large` (`FILE_TOO_LARGE`).
 4. **SHA-256 Checksum:** Calculated at upload time and stored in `thesis_files` to guarantee data integrity across versions.
 
-### 3.4 In-Portal Inline Viewing
-- Endpoint: `GET /theses/:submissionId/file/view`
+### 3.4 In-Portal Inline Viewing (Academic Book Reader)
+- Component: `frontend/src/components/ThesisBookReader.tsx`
+- Stream Endpoint: `GET /theses/:submissionId/file/view`
 - Protected with:
   - `Content-Type: application/pdf`
   - `Content-Disposition: inline; filename="sanitized.pdf"`
   - `Cache-Control: private, no-store, must-revalidate`
   - `X-Content-Type-Options: nosniff`
 - Prevents browsers and intermediaries from caching sensitive drafts locally.
+- In-portal document rendering is performed client-side using `pdfjs-dist` on an isolated HTML5 `<canvas>`, eliminating unauthenticated `<iframe>` leaks and ensuring session credentials (`credentials: "include"`) are used.
+- Reader provides academic navigation controls: page prev/next, jump to page, zoom controls, fit-to-width, fullscreen mode, and statutory view-only badges.
 
-### 3.5 Download Restriction (HOD Policy)
-- **HOD Download Prohibition:** Head of Department users are strictly blocked from downloading thesis PDFs via `/theses/:submissionId/file/download`. Denials are audited with `reason: hod_download_prohibited`.
+### 3.5 Download Restriction (HOD Institutional Policy)
+- **HOD Download Prohibition:** Under NIT Hamirpur regulations, Head of Department users are strictly blocked from downloading thesis PDFs via `/theses/:submissionId/file/download`. Denials are audited with `reason: hod_download_prohibited`.
+- **Multi-Role Enforcement:** Even if a faculty member holds multiple roles (e.g., HOD and Supervisor), when reviewing in the HOD stage or context of a departmental thesis, download requests are unconditionally denied with HTTP 403 `DOWNLOAD_FORBIDDEN_FOR_ROLE`. Only the student's designated individual research supervisor, author, or authorized institute authorities may download.
+- **Client-Side Neutrality:** Permissions are enforced authoritatively by backend controllers; frontend UI displays a statutory `🔒 View-Only Mode` badge and omits download triggers.
 
 ---
 

@@ -19,6 +19,7 @@ PRISMS provides a secure, auditable, and multi-stage academic workflow engine:
 
 ## 2. Technology Stack
 
+### Backend
 - **Runtime & Language:** Node.js (v22+), TypeScript (ES2022, NodeNext resolution, executed via `tsx`)
 - **Web Framework:** Express 5.x
 - **Database & ORM:** PostgreSQL 16+ with Prisma ORM 6.x
@@ -26,6 +27,12 @@ PRISMS provides a secure, auditable, and multi-stage academic workflow engine:
 - **File Upload & Storage:** Multer memory storage, magic bytes signature validation (`%PDF-`), SHA-256 checksums, private filesystem storage outside web root
 - **Validation & Security:** Zod schemas, Helmet, CORS, Express-Rate-Limit, central error handler
 - **Testing:** Node.js native test runner (`node:test`, `node:assert/strict`) with Supertest
+
+### Frontend
+- **Framework & Runtime:** Next.js 15.2.1 (App Router), React 19, TypeScript 5.8
+- **Styling & Design System:** Tailwind CSS 3.4 with custom NIT Hamirpur color tokens (Surface `#f7f7f6`, Charcoal `#171717`, Brand Gold `#daa32f`, Primary Green `#16a34a`)
+- **Visual Design Source:** Figma File `SKPTGM8RvLhsCdfYotKCpb` (9 top-level canvas pages faithfully mapped)
+- **Architecture:** Responsive application shell, bilingual institutional branding (English & Hindi), dynamic multi-role context switcher, resilient API client with mock fallback for demo stability
 
 ---
 
@@ -60,8 +67,21 @@ PRISMS/
 │   ├── storage/theses/             # Private thesis PDF storage (gitignored)
 │   ├── .env.example                # Example environment configuration
 │   └── package.json
+├── frontend/                       # Next.js 15 Figma-guided UI application
+│   ├── public/assets/              # Official NITH logo & SVG vector icon library
+│   ├── src/
+│   │   ├── app/                    # 27 App Router routes (Student, Faculty, Public)
+│   │   │   ├── student/            # Student Portal (dashboard, submit wizard, details, history...)
+│   │   │   ├── faculty/            # Faculty Portal (dashboard, queue, reviews, hod, scholars...)
+│   │   │   ├── login/              # Multi-role authentication & context switcher
+│   │   │   └── page.tsx            # Institutional landing page
+│   │   ├── components/             # Reusable UI components & ApplicationShell
+│   │   └── lib/                    # api.ts (backend client & mock fallback), auth.tsx context
+│   ├── tailwind.config.ts          # Extracted Figma tokens
+│   └── package.json
 ├── docs/
 │   ├── API.md                      # Complete REST API reference
+│   ├── FRONTEND_FIGMA_MAPPING.md   # Figma node mapping, color tokens, and 27-route directory
 │   ├── THESIS_WORKFLOW.md          # State machine, sequence, and Mermaid diagrams
 │   ├── AUTHORITY_ROUTING.md        # Authority matrix & recipient resolution rules
 │   ├── SECURITY.md                 # Security architecture, controls, and viewer limitations
@@ -112,7 +132,11 @@ npm run seed
 ```
 
 ### 4.4 Running the Application
+
+#### Backend (Port 4000)
 ```bash
+cd backend
+
 # Start development server with live reload
 npm run dev
 
@@ -122,7 +146,28 @@ npm run build
 # Start production server
 npm start
 ```
-The API listens on `http://localhost:4000`.
+The backend API listens on `http://localhost:4000`.
+
+#### Frontend (Port 3000)
+```bash
+cd frontend
+
+# Install dependencies (if not already done)
+npm install
+
+# Start Next.js development server
+npm run dev
+
+# Type check
+npm run typecheck
+
+# Build for production (pre-renders all 27 routes)
+npm run build
+
+# Start production server
+npm start
+```
+The PRISMS web application is available at `http://localhost:3000`.
 
 ---
 
@@ -179,7 +224,7 @@ Student Draft ──► Upload PDF ──► Formal Submit ──► Stage 1: Su
 
 ## 7. Testing & Quality Assurance
 
-PRISMS features an automated integration and security test suite using Node.js native test runner and Supertest.
+PRISMS features an automated integration and security test suite using Node.js native test runner and Supertest against a dedicated, isolated test database (`prisms_test`).
 
 Run tests from `backend/`:
 ```bash
@@ -187,12 +232,14 @@ npm test
 ```
 
 ### Verified Test Results:
-- **41/41 passing tests** covering:
+- **44/44 passing tests (0 failures)** covering:
   - Student draft, PDF signature verification, file size limits, IDOR protection
   - Supervisor queue, HOD dynamic recipient resolution, forwarding
   - DDPC observer access and restriction enforcement
   - In-portal inline viewing vs download authorization
-  - **HOD download denial enforcement**
+  - **Strict HOD download denial enforcement (including multi-role contexts and `role=HOD` query parameter rejection)**
+  - Unauthorized and unassigned faculty inline viewing rejection (403)
+  - Safe 404 response on invalid or non-existent fileId
   - Parallel forwarding to both SDPC and Dean Academics
   - Return for revision with mandatory remarks, student feedback visibility
   - Multi-version resubmission (Version 1 -> Version 2)
@@ -208,6 +255,7 @@ For detailed test documentation and suite breakdown, see [`docs/TESTING.md`](fil
 
 ## 8. Technical Documentation Directory
 
+- [`docs/FRONTEND_FIGMA_MAPPING.md`](file:///home/ankurgupta/PRISMS/docs/FRONTEND_FIGMA_MAPPING.md): Figma node-to-route mapping, color and typography token definitions, and 27-route directory.
 - [`docs/API.md`](file:///home/ankurgupta/PRISMS/docs/API.md): Comprehensive REST API endpoint reference with request/response examples.
 - [`docs/THESIS_WORKFLOW.md`](file:///home/ankurgupta/PRISMS/docs/THESIS_WORKFLOW.md): Workflow engine specification, Mermaid diagrams, and state transitions.
 - [`docs/AUTHORITY_ROUTING.md`](file:///home/ankurgupta/PRISMS/docs/AUTHORITY_ROUTING.md): Authority matrix, permission rules, and recipient resolution logic.
@@ -216,7 +264,16 @@ For detailed test documentation and suite breakdown, see [`docs/TESTING.md`](fil
 
 ---
 
-## 9. Notes for Production Deployment
+## 9. Development & System Credits
+
+PRISMS was designed and engineered for the National Institute of Technology Hamirpur by:
+
+- **Ankur Gupta** · [Portfolio](https://ankur-portfolio-topaz.vercel.app/) · Department of Computer Science & Engineering
+- **Aditya Sharma** · [GitHub](https://github.com/itzzadi04) · Department of Computer Science & Engineering
+
+---
+
+## 10. Notes for Production Deployment
 
 1. **Storage Provider:** While local private filesystem storage is configured for development, production can bind `THESIS_STORAGE_PATH` to a persistent private volume (e.g. NFS / private EBS) or an S3-compatible private bucket adapter.
 2. **Reverse Proxy:** Terminate SSL/TLS at Nginx/Caddy and configure `client_max_body_size 25M` to accommodate the 20 MiB thesis limit.

@@ -1,0 +1,34 @@
+@import url("https://fonts.googleapis.com/css2?family=Adamina&family=Arimo:ital,wght@0,400..700;1,400..700&family=Inter:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-surface-canvas: #f7f7f6;
+  --color-surface-charcoal: #171717;
+  --color-surface-subtle: #f2f2f0;
+  --color-surface-paper: #ffffff;
+  --color-surface-gold-tint: #fbf3de;
+  --color-text-primary: #303030;
+  --color-text-secondary: #666666;
+  --color-text-muted: #a3a3a3;
+  --color-text-strong-secondary: #525252;
+  --color-text-tertiary: #737373;
+  --color-border-strong: #e2e2df;
+  --color-brand-gold: #daa32f;
+  --color-action-primary: #16a34a;
+  --color-feedback-success-surface: #edf8ef;
+  --color-feedback-success-text: #166534;
+  --color-feedback-warning-surface: #fff7e6;
+  --color-feedback-warning-text: #8a570d;
+  --color-feedback-error: #b42318;
+  --color-feedback-error-surface: #fff1ef;
+}
+
+body {
+  background-color: var(--color-surface-canvas);
+  color: var(--color-text-primary);
+  font-family: "Arimo", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}

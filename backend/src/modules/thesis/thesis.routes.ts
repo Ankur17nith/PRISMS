@@ -25,6 +25,15 @@ const upload = multer({
 });
 
 const param = (p: string | string[] | undefined): string => (Array.isArray(p) ? p[0] ?? "" : p ?? "");
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const uuidParam = (p: string | string[] | undefined, name = "resource"): string => {
+  const val = param(p);
+  if (!val || !UUID_REGEX.test(val)) {
+    throw new AppError(404, `Invalid ${name} identifier or resource not found`, "RESOURCE_NOT_FOUND");
+  }
+  return val;
+};
 
 const router = Router();
 
@@ -120,7 +129,7 @@ router.get("/queue", requireAuth, async (req, res) => {
 
 // Get authorized forwarding recipients for current stage
 router.get("/:submissionId/recipients", requireAuth, async (req, res) => {
-  const recipients = await service.getAuthorizedRecipients(param(req.params.submissionId), req.auth!.userId);
+  const recipients = await service.getAuthorizedRecipients(uuidParam(req.params.submissionId, "submission"), req.auth!.userId);
   res.json(recipients);
 });
 
@@ -130,7 +139,7 @@ router.post(
   requireAuth,
   validate(forwardReviewSchema),
   async (req, res) => {
-    const result = await service.forwardSubmission(param(req.params.submissionId), req.auth!.userId, req.body, req);
+    const result = await service.forwardSubmission(uuidParam(req.params.submissionId, "submission"), req.auth!.userId, req.body, req);
     res.json(result);
   },
 );
@@ -141,7 +150,7 @@ router.post(
   requireAuth,
   validate(returnReviewSchema),
   async (req, res) => {
-    const result = await service.returnSubmission(param(req.params.submissionId), req.auth!.userId, req.body, req);
+    const result = await service.returnSubmission(uuidParam(req.params.submissionId, "submission"), req.auth!.userId, req.body, req);
     res.json(result);
   },
 );
@@ -152,7 +161,7 @@ router.post(
   requireAuth,
   validate(rejectReviewSchema),
   async (req, res) => {
-    const result = await service.rejectSubmission(param(req.params.submissionId), req.auth!.userId, req.body, req);
+    const result = await service.rejectSubmission(uuidParam(req.params.submissionId, "submission"), req.auth!.userId, req.body, req);
     res.json(result);
   },
 );
@@ -163,7 +172,13 @@ router.post(
 
 // Inline in-portal PDF viewer stream (authenticated, no public URLs)
 router.get("/:submissionId/file/view", requireAuth, async (req, res) => {
-  const file = await service.authorizeDocumentAccess(param(req.params.submissionId), req.auth!, "view", req);
+  const file = await service.authorizeDocumentAccess(
+    uuidParam(req.params.submissionId, "submission"),
+    req.auth!,
+    "view",
+    req,
+    req.query.fileId as string | undefined,
+  );
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${file.originalFilename}"`);
@@ -182,7 +197,13 @@ router.get("/:submissionId/file/view", requireAuth, async (req, res) => {
 
 // Dedicated document download (HOD strictly prohibited!)
 router.get("/:submissionId/file/download", requireAuth, async (req, res) => {
-  const file = await service.authorizeDocumentAccess(param(req.params.submissionId), req.auth!, "download", req);
+  const file = await service.authorizeDocumentAccess(
+    uuidParam(req.params.submissionId, "submission"),
+    req.auth!,
+    "download",
+    req,
+    req.query.fileId as string | undefined,
+  );
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${file.originalFilename}"`);
@@ -215,7 +236,7 @@ router.get("/supervisor/scholars", requireAuth, async (req, res) => {
 
 // Get detailed submission and version history for a specific supervised scholar
 router.get("/supervisor/scholars/:studentId", requireAuth, async (req, res) => {
-  const result = await service.getSupervisorScholarHistory(req.auth!.userId, param(req.params.studentId));
+  const result = await service.getSupervisorScholarHistory(req.auth!.userId, uuidParam(req.params.studentId, "scholar"));
   res.json(result);
 });
 
@@ -224,7 +245,7 @@ router.get("/supervisor/scholars/:studentId", requireAuth, async (req, res) => {
 // =============================================================================
 
 router.get("/:submissionId", requireAuth, async (req, res) => {
-  const result = await service.getSubmissionDetail(param(req.params.submissionId), req.auth!);
+  const result = await service.getSubmissionDetail(uuidParam(req.params.submissionId, "submission"), req.auth!);
   res.json(result);
 });
 

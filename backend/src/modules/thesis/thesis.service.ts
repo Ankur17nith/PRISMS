@@ -1,8 +1,9 @@
 import type { Request } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
+import fs from "node:fs";
 import { audit } from "../../lib/audit.js";
-import { fileExists, ValidatedPdf } from "../../lib/storage.js";
+import { fileExists, getSecureFilePath, ValidatedPdf } from "../../lib/storage.js";
 import type { AuthContext } from "../../middleware/auth.js";
 import { ROLES, STAGE_CODES, hasNormalizedRole, normalizeRoleCode } from "./thesis.constants.js";
 import type {
@@ -114,7 +115,15 @@ export async function getStudentThesisDraft(userId: string) {
           abstract: thesis.abstract,
           researchArea: thesis.researchArea,
           status: thesis.status,
-          latestSubmission: thesis.submissions[0] ?? null,
+          latestSubmission: thesis.submissions[0]
+            ? {
+                ...thesis.submissions[0],
+                files: thesis.submissions[0].files.map((f) => ({
+                  ...f,
+                  fileSizeBytes: Number(f.fileSizeBytes),
+                })),
+              }
+            : null,
         }
       : null,
   };
@@ -235,7 +244,17 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
       },
     });
 
-    // 2. Link file
+    // 2. Link file with accurate byte size
+    let fileSizeBytes = BigInt(0);
+    try {
+      const filePath = getSecureFilePath(input.storageKey!);
+      if (fs.existsSync(filePath)) {
+        fileSizeBytes = BigInt(fs.statSync(filePath).size);
+      }
+    } catch {
+      // fallback
+    }
+
     const file = await tx.thesisFile.create({
       data: {
         submissionId: sub.id,
@@ -243,7 +262,7 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
         originalFilename: input.originalFilename ?? "thesis.pdf",
         storageKey: input.storageKey!,
         mimeType: "application/pdf",
-        fileSizeBytes: BigInt(0), // will be updated from storage if known
+        fileSizeBytes,
         scanStatus: "CLEAN",
         isPrimary: true,
       },
@@ -344,7 +363,17 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
       },
     });
 
-    // 2. Link newly uploaded revised file (previous versions remain untouched)
+    // 2. Link newly uploaded revised file with accurate byte size
+    let resubmitFileSizeBytes = BigInt(0);
+    try {
+      const filePath = getSecureFilePath(input.storageKey);
+      if (fs.existsSync(filePath)) {
+        resubmitFileSizeBytes = BigInt(fs.statSync(filePath).size);
+      }
+    } catch {
+      // fallback
+    }
+
     const file = await tx.thesisFile.create({
       data: {
         submissionId: sub.id,
@@ -352,7 +381,7 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
         originalFilename: input.originalFilename,
         storageKey: input.storageKey,
         mimeType: "application/pdf",
-        fileSizeBytes: BigInt(0),
+        fileSizeBytes: resubmitFileSizeBytes,
         scanStatus: "CLEAN",
         isPrimary: true,
       },
@@ -466,7 +495,10 @@ export async function getStudentSubmissions(userId: string) {
     submissions: thesis.submissions.map((s) => ({
       id: s.id,
       submissionNumber: s.submissionNumber,
+      submissionReference: `TH-${new Date(s.submittedAt).getFullYear()}-${String(s.submissionNumber).padStart(3, "0")}`,
+      title: thesis.workingTitle,
       status: s.status,
+      currentVersion: s.submissionNumber,
       submittedAt: s.submittedAt,
       closureReason: s.closureReason,
       files: s.files.map((f) => ({
@@ -586,6 +618,9 @@ export async function getSubmissionDetail(submissionId: string, auth: AuthContex
     submission: {
       id: submission.id,
       submissionNumber: submission.submissionNumber,
+      submissionReference: `TH-2026-${submission.submissionNumber.toString().padStart(3, "0")}`,
+      currentVersion: submission.submissionNumber,
+      title: submission.thesis.workingTitle,
       status: submission.status,
       submittedAt: submission.submittedAt,
       closedAt: submission.closedAt,
@@ -601,12 +636,34 @@ export async function getSubmissionDetail(submissionId: string, auth: AuthContex
         rollNumber: submission.thesis.student.rollNumber,
         fullName: submission.thesis.student.user.fullName,
         email: submission.thesis.student.user.collegeEmail,
+        collegeEmail: submission.thesis.student.user.collegeEmail,
+        user: {
+          id: submission.thesis.student.user.id,
+          fullName: submission.thesis.student.user.fullName,
+          collegeEmail: submission.thesis.student.user.collegeEmail,
+        },
         department: submission.thesis.student.department,
+      },
+      student: {
+        id: submission.thesis.student.id,
+        rollNumber: submission.thesis.student.rollNumber,
+        program: submission.thesis.student.program,
+        user: {
+          id: submission.thesis.student.user.id,
+          fullName: submission.thesis.student.user.fullName,
+          collegeEmail: submission.thesis.student.user.collegeEmail,
+        },
+        department: {
+          id: submission.thesis.student.department.id,
+          code: submission.thesis.student.department.code,
+          name: submission.thesis.student.department.name,
+        },
       },
       files: submission.files.map((f) => ({
         id: f.id,
         originalFilename: f.originalFilename,
-        fileSizeBytes: f.fileSizeBytes.toString(),
+        originalFileName: f.originalFilename,
+        fileSizeBytes: Number(f.fileSizeBytes),
         sha256Checksum: f.sha256Checksum,
         scanStatus: f.scanStatus,
         uploadedAt: f.uploadedAt,
@@ -650,13 +707,14 @@ export async function authorizeDocumentAccess(
   auth: AuthContext,
   action: "view" | "download",
   req?: Request,
+  fileId?: string,
 ) {
   const submission = await prisma.thesisSubmission.findUnique({
     where: { id: submissionId },
     include: {
       thesis: { include: { student: true } },
-      files: { where: { isPrimary: true }, take: 1 },
-      stages: { include: { assignments: true } },
+      files: true,
+      stages: { include: { definition: true, assignments: true } },
     },
   });
 
@@ -664,9 +722,12 @@ export async function authorizeDocumentAccess(
     throw new AppError(404, "Thesis submission not found", "SUBMISSION_NOT_FOUND");
   }
 
-  const primaryFile = submission.files[0];
-  if (!primaryFile) {
-    throw new AppError(404, "No primary thesis file associated with this submission", "FILE_NOT_FOUND");
+  const targetFile = fileId
+    ? submission.files.find((f) => f.id === fileId)
+    : submission.files.find((f) => f.isPrimary) || submission.files[0];
+
+  if (!targetFile) {
+    throw new AppError(404, "No matching thesis file associated with this submission", "FILE_NOT_FOUND");
   }
 
   const studentDeptId = submission.thesis.student.departmentId;
@@ -701,7 +762,7 @@ export async function authorizeDocumentAccess(
       actorUserId: auth.userId,
       eventType: "thesis.document_access",
       entityType: "thesis_file",
-      entityId: primaryFile.id,
+      entityId: targetFile.id,
       outcome: "DENIED",
       reason: "unauthorized_view",
       req,
@@ -709,17 +770,31 @@ export async function authorizeDocumentAccess(
     throw new AppError(403, "You do not have permission to access this thesis document", "FORBIDDEN");
   }
 
-  // 2. DOWNLOAD RESTRICTION (MANDATORY RULE)
+  // 2. DOWNLOAD RESTRICTION (MANDATORY INSTITUTIONAL RULE)
   if (action === "download") {
-    // If the user's role in this context is HOD, download is strictly forbidden.
-    // If user has other roles (e.g. Supervisor), they cannot use HOD context to download.
-    // Specifically: HOD must NEVER be allowed to download thesis documents.
-    if (isHod && !isAssignedSupervisor && !isAuthor && !hasInstituteRole) {
+    // Check if the user is acting in HOD review mode or currently assigned to HOD review stage
+    const isHodReviewAssignment = submission.stages.some(
+      (st) =>
+        st.definition?.code === "HOD_REVIEW" &&
+        st.assignments.some(
+          (a) =>
+            a.reviewerUserId === auth.userId &&
+            (a.assignmentStatus === "ASSIGNED" || a.assignmentStatus === "ACCEPTED"),
+        ),
+    );
+    const isActingAsHod =
+      req?.headers["x-active-role"] === "HOD" ||
+      req?.query?.role === "HOD" ||
+      isHodReviewAssignment;
+
+    // Under NIT Hamirpur regulations, HOD review workflow or HOD role (unless also the assigned individual supervisor)
+    // is strictly prohibited from downloading dissertation documents under all circumstances.
+    if (isActingAsHod || (isHod && !isAssignedSupervisor && !isAuthor)) {
       await audit({
         actorUserId: auth.userId,
         eventType: "thesis.file_download",
         entityType: "thesis_file",
-        entityId: primaryFile.id,
+        entityId: targetFile.id,
         outcome: "DENIED",
         reason: "hod_download_prohibited",
         req,
@@ -738,7 +813,7 @@ export async function authorizeDocumentAccess(
         actorUserId: auth.userId,
         eventType: "thesis.file_download",
         entityType: "thesis_file",
-        entityId: primaryFile.id,
+        entityId: targetFile.id,
         outcome: "DENIED",
         reason: "role_not_permitted_download",
         req,
@@ -752,13 +827,13 @@ export async function authorizeDocumentAccess(
     actorUserId: auth.userId,
     eventType: action === "view" ? "thesis.file_viewed" : "thesis.file_downloaded",
     entityType: "thesis_file",
-    entityId: primaryFile.id,
+    entityId: targetFile.id,
     outcome: "SUCCESS",
-    metadata: { submissionId, originalFilename: primaryFile.originalFilename },
+    metadata: { submissionId, originalFilename: targetFile.originalFilename },
     req,
   });
 
-  return primaryFile;
+  return targetFile;
 }
 
 // -----------------------------------------------------------------------------
@@ -805,22 +880,51 @@ export async function getFacultyReviewQueue(
     orderBy: { assignedAt: "desc" },
   });
 
-  const tasks = assignments.map((a) => ({
-    assignmentId: a.id,
-    submissionId: a.stage.submissionId,
-    submissionNumber: a.stage.submission.submissionNumber,
-    submittedAt: a.stage.submission.submittedAt,
-    workingTitle: a.stage.submission.thesis.workingTitle,
-    studentName: a.stage.submission.thesis.student.user.fullName,
-    rollNumber: a.stage.submission.thesis.student.rollNumber,
-    departmentCode: a.stage.submission.thesis.student.department.code,
-    departmentName: a.stage.submission.thesis.student.department.name,
-    stageCode: a.stage.definition.code,
-    stageName: a.stage.definition.name,
-    assignedRole: a.reviewerRole?.code ?? "REVIEWER",
-    assignedAt: a.assignedAt,
-    status: a.stage.submission.status,
-  }));
+  const tasks = assignments.map((a) => {
+    const studentUser = a.stage.submission.thesis.student.user;
+    const studentDept = a.stage.submission.thesis.student.department;
+    return {
+      assignmentId: a.id,
+      submissionId: a.stage.submissionId,
+      submissionNumber: a.stage.submission.submissionNumber,
+      submittedAt: a.stage.submission.submittedAt,
+      workingTitle: a.stage.submission.thesis.workingTitle,
+      studentName: studentUser.fullName,
+      rollNumber: a.stage.submission.thesis.student.rollNumber,
+      departmentCode: studentDept.code,
+      departmentName: studentDept.name,
+      stageCode: a.stage.definition.code,
+      stageName: a.stage.definition.name,
+      assignedRole: a.reviewerRole?.code ?? "REVIEWER",
+      assignedAt: a.assignedAt,
+      status: a.stage.submission.status,
+      submission: {
+        id: a.stage.submissionId,
+        submissionReference: `TH-2026-${String(a.stage.submission.submissionNumber).padStart(3, "0")}`,
+        title: a.stage.submission.thesis.workingTitle,
+        status: a.stage.submission.status,
+        currentVersion: a.stage.submission.submissionNumber,
+        submittedAt: a.stage.submission.submittedAt ? a.stage.submission.submittedAt.toISOString() : null,
+        student: {
+          rollNumber: a.stage.submission.thesis.student.rollNumber,
+          program: a.stage.submission.thesis.student.program,
+          user: {
+            fullName: studentUser.fullName,
+            collegeEmail: studentUser.collegeEmail,
+          },
+          department: {
+            code: studentDept.code,
+            name: studentDept.name,
+          },
+        },
+      },
+      stage: {
+        code: a.stage.definition.code,
+        name: a.stage.definition.name,
+        sequenceOrder: a.stage.definition.sequenceNumber,
+      },
+    };
+  });
 
   // Also include DDPC observer visibility for student submissions in DDPC's department
   const ddpcRole = userRoles.find((r) => normalizeRoleCode(r.code) === ROLES.DDPC);
@@ -867,6 +971,31 @@ export async function getFacultyReviewQueue(
           assignedRole: ROLES.DDPC,
           assignedAt: sub.submittedAt,
           status: sub.status,
+          submission: {
+            id: sub.id,
+            submissionReference: `TH-2026-${String(sub.submissionNumber).padStart(3, "0")}`,
+            title: sub.thesis.workingTitle,
+            status: sub.status,
+            currentVersion: sub.submissionNumber,
+            submittedAt: sub.submittedAt ? sub.submittedAt.toISOString() : null,
+            student: {
+              rollNumber: sub.thesis.student.rollNumber,
+              program: sub.thesis.student.program,
+              user: {
+                fullName: sub.thesis.student.user.fullName,
+                collegeEmail: sub.thesis.student.user.collegeEmail,
+              },
+              department: {
+                code: sub.thesis.student.department.code,
+                name: sub.thesis.student.department.name,
+              },
+            },
+          },
+          stage: {
+            code: currentStage?.definition.code ?? "PENDING",
+            name: currentStage?.definition.name ?? "Pending Review",
+            sequenceOrder: currentStage?.definition.sequenceNumber ?? 2,
+          },
         });
       }
     }
@@ -1526,16 +1655,30 @@ export async function getSupervisorScholars(userId: string, query: ScholarQuery)
     const isSupervisionActive = !a.endDate || a.endDate > now;
 
     return {
+      scholarId: a.studentId,
       studentId: a.studentId,
       rollNumber: a.student.rollNumber,
       fullName: a.student.user.fullName,
       email: a.student.user.collegeEmail,
+      collegeEmail: a.student.user.collegeEmail,
       program: a.student.program,
+      admissionStatus: isSupervisionActive ? "Active" : "Completed",
       departmentCode: a.student.department.code,
       departmentName: a.student.department.name,
       supervisionStatus: isSupervisionActive ? "CURRENT" : "COMPLETED",
       supervisionStartDate: a.startDate,
       supervisionEndDate: a.endDate,
+      activeSubmission: latestSub
+        ? {
+            id: latestSub.id,
+            submissionReference: `TH-2026-${latestSub.submissionNumber.toString().padStart(3, "0")}`,
+            title: a.student.thesis?.workingTitle ?? "Doctoral Dissertation",
+            status: latestSub.status,
+            currentVersion: latestSub.submissionNumber,
+            submittedAt: latestSub.submittedAt ? latestSub.submittedAt.toISOString() : null,
+            currentStage: currentPendingStage?.definition.name ?? null,
+          }
+        : null,
       thesis: a.student.thesis
         ? {
             id: a.student.thesis.id,
@@ -1574,7 +1717,7 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
     include: {
       student: {
         include: {
-          user: { select: { fullName: true, collegeEmail: true } },
+          user: { select: { id: true, fullName: true, collegeEmail: true } },
           department: { select: { code: true, name: true } },
         },
       },
@@ -1613,12 +1756,64 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
     },
   });
 
+  const submissionsList = thesis
+    ? thesis.submissions.map((s) => ({
+        id: s.id,
+        submissionNumber: s.submissionNumber,
+        submissionReference: `TH-2026-${s.submissionNumber.toString().padStart(3, "0")}`,
+        currentVersion: s.submissionNumber,
+        title: thesis.workingTitle,
+        status: s.status,
+        submittedAt: s.submittedAt,
+        closedAt: s.closedAt,
+        closureReason: s.closureReason,
+        files: s.files.map((f) => ({
+          id: f.id,
+          originalFilename: f.originalFilename,
+          originalFileName: f.originalFilename,
+          fileSizeBytes: Number(f.fileSizeBytes),
+          scanStatus: f.scanStatus,
+          uploadedAt: f.uploadedAt,
+        })),
+        stages: s.stages.map((st) => ({
+          id: st.id,
+          stageName: st.definition.name,
+          stageCode: st.definition.code,
+          status: st.status,
+          startedAt: st.startedAt,
+          completedAt: st.completedAt,
+          assignments: st.assignments.map((a) => ({
+            id: a.id,
+            reviewerName: a.reviewer.fullName,
+            reviewerRole: a.reviewerRole?.code ?? "REVIEWER",
+            status: a.assignmentStatus,
+            decision: a.review?.decision ?? null,
+            decisionSummary: a.review?.summary ?? null,
+            decidedAt: a.review?.decidedAt ?? null,
+          })),
+        })),
+        feedback: s.comments.map((c) => ({
+          id: c.id,
+          author: c.author.fullName,
+          body: c.body,
+          createdAt: c.createdAt,
+        })),
+      }))
+    : [];
+
   return {
     scholar: {
       studentId: assignment.studentId,
+      scholarId: assignment.studentId,
       rollNumber: assignment.student.rollNumber,
       fullName: assignment.student.user.fullName,
       email: assignment.student.user.collegeEmail,
+      collegeEmail: assignment.student.user.collegeEmail,
+      user: {
+        id: assignment.student.user.id,
+        fullName: assignment.student.user.fullName,
+        collegeEmail: assignment.student.user.collegeEmail,
+      },
       program: assignment.student.program,
       department: assignment.student.department,
       supervisionStartDate: assignment.startDate,
@@ -1631,45 +1826,9 @@ export async function getSupervisorScholarHistory(supervisorUserId: string, stud
           abstract: thesis.abstract,
           researchArea: thesis.researchArea,
           status: thesis.status,
-          submissions: thesis.submissions.map((s) => ({
-            id: s.id,
-            submissionNumber: s.submissionNumber,
-            status: s.status,
-            submittedAt: s.submittedAt,
-            closedAt: s.closedAt,
-            closureReason: s.closureReason,
-            files: s.files.map((f) => ({
-              id: f.id,
-              originalFilename: f.originalFilename,
-              fileSizeBytes: f.fileSizeBytes.toString(),
-              scanStatus: f.scanStatus,
-              uploadedAt: f.uploadedAt,
-            })),
-            stages: s.stages.map((st) => ({
-              id: st.id,
-              stageName: st.definition.name,
-              stageCode: st.definition.code,
-              status: st.status,
-              startedAt: st.startedAt,
-              completedAt: st.completedAt,
-              assignments: st.assignments.map((a) => ({
-                id: a.id,
-                reviewerName: a.reviewer.fullName,
-                reviewerRole: a.reviewerRole?.code ?? "REVIEWER",
-                status: a.assignmentStatus,
-                decision: a.review?.decision ?? null,
-                decisionSummary: a.review?.summary ?? null,
-                decidedAt: a.review?.decidedAt ?? null,
-              })),
-            })),
-            feedback: s.comments.map((c) => ({
-              id: c.id,
-              author: c.author.fullName,
-              body: c.body,
-              createdAt: c.createdAt,
-            })),
-          })),
+          submissions: submissionsList,
         }
       : null,
+    submissions: submissionsList,
   };
 }

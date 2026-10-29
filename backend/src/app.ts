@@ -8,6 +8,11 @@ import authRoutes from "./modules/auth/auth.routes.js";
 import thesisRoutes from "./modules/thesis/thesis.routes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 
+// Support BigInt serialization in JSON responses (e.g. fileSizeBytes in Prisma models)
+(BigInt.prototype as any).toJSON = function () {
+  return Number(this);
+};
+
 const app: Express = express();
 
 app.disable("x-powered-by");
