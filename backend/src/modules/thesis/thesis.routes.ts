@@ -163,7 +163,13 @@ router.post(
 
 // Inline in-portal PDF viewer stream (authenticated, no public URLs)
 router.get("/:submissionId/file/view", requireAuth, async (req, res) => {
-  const file = await service.authorizeDocumentAccess(param(req.params.submissionId), req.auth!, "view", req);
+  const file = await service.authorizeDocumentAccess(
+    param(req.params.submissionId),
+    req.auth!,
+    "view",
+    req,
+    req.query.fileId as string | undefined,
+  );
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${file.originalFilename}"`);
@@ -182,7 +188,13 @@ router.get("/:submissionId/file/view", requireAuth, async (req, res) => {
 
 // Dedicated document download (HOD strictly prohibited!)
 router.get("/:submissionId/file/download", requireAuth, async (req, res) => {
-  const file = await service.authorizeDocumentAccess(param(req.params.submissionId), req.auth!, "download", req);
+  const file = await service.authorizeDocumentAccess(
+    param(req.params.submissionId),
+    req.auth!,
+    "download",
+    req,
+    req.query.fileId as string | undefined,
+  );
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${file.originalFilename}"`);

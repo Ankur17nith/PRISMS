@@ -650,13 +650,14 @@ export async function authorizeDocumentAccess(
   auth: AuthContext,
   action: "view" | "download",
   req?: Request,
+  fileId?: string,
 ) {
   const submission = await prisma.thesisSubmission.findUnique({
     where: { id: submissionId },
     include: {
       thesis: { include: { student: true } },
-      files: { where: { isPrimary: true }, take: 1 },
-      stages: { include: { assignments: true } },
+      files: true,
+      stages: { include: { definition: true, assignments: true } },
     },
   });
 
@@ -664,9 +665,12 @@ export async function authorizeDocumentAccess(
     throw new AppError(404, "Thesis submission not found", "SUBMISSION_NOT_FOUND");
   }
 
-  const primaryFile = submission.files[0];
-  if (!primaryFile) {
-    throw new AppError(404, "No primary thesis file associated with this submission", "FILE_NOT_FOUND");
+  const targetFile = fileId
+    ? submission.files.find((f) => f.id === fileId)
+    : submission.files.find((f) => f.isPrimary) || submission.files[0];
+
+  if (!targetFile) {
+    throw new AppError(404, "No matching thesis file associated with this submission", "FILE_NOT_FOUND");
   }
 
   const studentDeptId = submission.thesis.student.departmentId;
@@ -701,7 +705,7 @@ export async function authorizeDocumentAccess(
       actorUserId: auth.userId,
       eventType: "thesis.document_access",
       entityType: "thesis_file",
-      entityId: primaryFile.id,
+      entityId: targetFile.id,
       outcome: "DENIED",
       reason: "unauthorized_view",
       req,
@@ -709,17 +713,31 @@ export async function authorizeDocumentAccess(
     throw new AppError(403, "You do not have permission to access this thesis document", "FORBIDDEN");
   }
 
-  // 2. DOWNLOAD RESTRICTION (MANDATORY RULE)
+  // 2. DOWNLOAD RESTRICTION (MANDATORY INSTITUTIONAL RULE)
   if (action === "download") {
-    // If the user's role in this context is HOD, download is strictly forbidden.
-    // If user has other roles (e.g. Supervisor), they cannot use HOD context to download.
-    // Specifically: HOD must NEVER be allowed to download thesis documents.
-    if (isHod && !isAssignedSupervisor && !isAuthor && !hasInstituteRole) {
+    // Check if the user is acting in HOD review mode or currently assigned to HOD review stage
+    const isHodReviewAssignment = submission.stages.some(
+      (st) =>
+        st.definition?.code === "HOD_REVIEW" &&
+        st.assignments.some(
+          (a) =>
+            a.reviewerUserId === auth.userId &&
+            (a.assignmentStatus === "ASSIGNED" || a.assignmentStatus === "ACCEPTED"),
+        ),
+    );
+    const isActingAsHod =
+      req?.headers["x-active-role"] === "HOD" ||
+      req?.query?.role === "HOD" ||
+      isHodReviewAssignment;
+
+    // Under NIT Hamirpur regulations, HOD review workflow or HOD role (unless also the assigned individual supervisor)
+    // is strictly prohibited from downloading dissertation documents under all circumstances.
+    if (isActingAsHod || (isHod && !isAssignedSupervisor && !isAuthor)) {
       await audit({
         actorUserId: auth.userId,
         eventType: "thesis.file_download",
         entityType: "thesis_file",
-        entityId: primaryFile.id,
+        entityId: targetFile.id,
         outcome: "DENIED",
         reason: "hod_download_prohibited",
         req,
@@ -738,7 +756,7 @@ export async function authorizeDocumentAccess(
         actorUserId: auth.userId,
         eventType: "thesis.file_download",
         entityType: "thesis_file",
-        entityId: primaryFile.id,
+        entityId: targetFile.id,
         outcome: "DENIED",
         reason: "role_not_permitted_download",
         req,
@@ -752,13 +770,13 @@ export async function authorizeDocumentAccess(
     actorUserId: auth.userId,
     eventType: action === "view" ? "thesis.file_viewed" : "thesis.file_downloaded",
     entityType: "thesis_file",
-    entityId: primaryFile.id,
+    entityId: targetFile.id,
     outcome: "SUCCESS",
-    metadata: { submissionId, originalFilename: primaryFile.originalFilename },
+    metadata: { submissionId, originalFilename: targetFile.originalFilename },
     req,
   });
 
-  return primaryFile;
+  return targetFile;
 }
 
 // -----------------------------------------------------------------------------
