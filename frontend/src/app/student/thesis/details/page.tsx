@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { ThesisBookReader } from "@/components/ThesisBookReader";
 import { api, SubmissionItem } from "@/lib/api";
+import { formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
 
 function SubmissionDetailsContent() {
   const searchParams = useSearchParams();
@@ -18,11 +19,11 @@ function SubmissionDetailsContent() {
     async function load() {
       try {
         let sub: SubmissionItem;
-        if (idFromQuery) {
+        if (idFromQuery && idFromQuery !== "undefined") {
           sub = await api.getSubmissionDetails(idFromQuery);
         } else {
           const list = await api.getMySubmissions();
-          if (list.length > 0) {
+          if (list && list.length > 0) {
             sub = await api.getSubmissionDetails(list[0].id);
           } else {
             setError("No thesis submissions found.");
@@ -71,7 +72,7 @@ function SubmissionDetailsContent() {
         {/* Title strip */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-[26px] font-bold text-[#171717]">{submission.title}</h1>
+            <h1 className="text-[26px] font-bold text-[#171717]">{submission.title || "Doctoral Thesis"}</h1>
             <p className="text-[13px] text-[#666]">
               Reference: <span className="font-bold text-[#171717]">{submission.submissionReference}</span> ·
               Version <span className="font-bold text-[#171717]">{submission.currentVersion}</span>
@@ -80,17 +81,9 @@ function SubmissionDetailsContent() {
 
           <div className="flex items-center gap-3">
             <span
-              className={`text-[12px] font-bold px-3 py-1.5 rounded-[4px] ${
-                submission.status === "APPROVED"
-                  ? "bg-[#edf8ef] text-[#166534]"
-                  : submission.status === "REVISION_REQUIRED"
-                  ? "bg-[#fff7e6] text-[#8a570d]"
-                  : submission.status === "REJECTED"
-                  ? "bg-[#fff1ef] text-[#b42318]"
-                  : "bg-[#edf8ef] text-[#166534]"
-              }`}
+              className={`text-[12px] font-bold px-3 py-1.5 rounded-[4px] ${getStatusBadgeClasses(submission.status)}`}
             >
-              {submission.status.replace(/_/g, " ")}
+              {formatStatusLabel(submission.status)}
             </span>
 
             {submission.status === "REVISION_REQUIRED" && (
@@ -98,7 +91,7 @@ function SubmissionDetailsContent() {
                 href={`/student/thesis/submit?resubmit=${submission.id}`}
                 className="bg-[#daa32f] hover:bg-[#c49228] text-white font-bold text-[13px] px-4 py-1.5 rounded-[6px]"
               >
-                Submit Revision (v{submission.currentVersion + 1}) →
+                Submit Revision (v{(submission.currentVersion || 1) + 1}) →
               </Link>
             )}
           </div>
@@ -112,7 +105,7 @@ function SubmissionDetailsContent() {
             </h3>
             <p>
               The committee has requested modifications to your dissertation. Please review the reviewer comments below,
-              update your document, and submit Version {submission.currentVersion + 1}. Previous versions are retained
+              update your document, and submit Version {(submission.currentVersion || 1) + 1}. Previous versions are retained
               in accordance with institutional policy.
             </p>
           </div>
@@ -130,7 +123,7 @@ function SubmissionDetailsContent() {
               <div className="space-y-4 text-[12.5px]">
                 {submission.stages && submission.stages.length > 0 ? (
                   submission.stages.map((st, idx) => (
-                    <div key={st.id} className="flex items-start gap-3">
+                    <div key={st.id || `stg-${idx}`} className="flex items-start gap-3">
                       <div
                         className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0 ${
                           st.status === "COMPLETED"

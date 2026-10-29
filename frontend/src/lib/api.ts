@@ -4,6 +4,8 @@
  * and resilient mock fallback for offline demonstrations.
  */
 
+import { normalizeSubmission } from "./statusHelper";
+
 export interface UserRole {
   id: string;
   code: string;
@@ -624,16 +626,19 @@ export const api = {
   getMySubmissions: async (): Promise<SubmissionItem[]> => {
     try {
       const res = await request<any>("/theses/my");
-      if (Array.isArray(res)) return res;
-      if (Array.isArray(res?.submissions)) return res.submissions;
-      return [];
+      const list = Array.isArray(res) ? res : Array.isArray(res?.submissions) ? res.submissions : [];
+      return list.map((item: any) => normalizeSubmission(item));
     } catch {
       return [];
     }
   },
 
   getSubmissionDetails: async (submissionId: string): Promise<SubmissionItem> => {
-    return await request<SubmissionItem>(`/theses/${submissionId}`);
+    if (!submissionId || submissionId === "undefined") {
+      throw new Error("Invalid submission identifier provided.");
+    }
+    const res = await request<any>(`/theses/${submissionId}`);
+    return normalizeSubmission(res?.submission || res);
   },
 
   resubmitThesis: async (submissionId: string, data: { title?: string; workingTitle?: string; abstract?: string; keywords?: string[]; fileScanId?: string; storageKey?: string; originalFileName?: string }) => {
@@ -761,17 +766,80 @@ export const api = {
   getMyScholars: async (status?: string): Promise<ScholarItem[]> => {
     try {
       const res = await request<any>(`/theses/supervisor/scholars${status ? `?status=${status}` : ""}`);
-      if (Array.isArray(res)) return res;
-      if (Array.isArray(res?.scholars)) return res.scholars;
-      return [];
+      const rawList = Array.isArray(res) ? res : Array.isArray(res?.scholars) ? res.scholars : [];
+      return rawList.map((s: any) => {
+        const id = s.scholarId || s.studentId || "";
+        return {
+          scholarId: id,
+          studentId: id,
+          rollNumber: s.rollNumber || "",
+          fullName: s.fullName || s.user?.fullName || "Doctoral Scholar",
+          collegeEmail: s.collegeEmail || s.user?.collegeEmail || s.email || "",
+          email: s.email || s.collegeEmail || s.user?.collegeEmail || "",
+          program: s.program || "PhD",
+          admissionStatus: s.admissionStatus || "CONFIRMED",
+          departmentName: s.departmentName || s.department?.name || "Computer Science and Engineering",
+          departmentCode: s.departmentCode || s.department?.code || "CSE",
+          activeSubmission: s.activeSubmission
+            ? {
+                id: s.activeSubmission.id || "",
+                submissionReference: s.activeSubmission.submissionReference || "TH-2026-001",
+                title: s.activeSubmission.title || "PhD Thesis Submission",
+                status: s.activeSubmission.status || "SUBMITTED",
+                currentVersion: Number(s.activeSubmission.currentVersion || 1),
+                submittedAt: s.activeSubmission.submittedAt || null,
+                currentStage: s.activeSubmission.currentStage || null,
+              }
+            : null,
+        };
+      });
     } catch {
       return [];
     }
   },
 
   getScholarHistory: async (scholarId: string) => {
+    if (!scholarId || scholarId === "undefined") {
+      return {
+        scholar: null,
+        submissions: [],
+      };
+    }
     try {
-      return await request<{ scholar: unknown; submissions: SubmissionItem[] }>(`/theses/supervisor/scholars/${scholarId}`);
+      const res = await request<any>(`/theses/supervisor/scholars/${scholarId}`);
+      const rawScholar = res?.scholar || null;
+      let scholarObj = null;
+      if (rawScholar) {
+        const sid = rawScholar.scholarId || rawScholar.studentId || scholarId;
+        const name = rawScholar.fullName || rawScholar.user?.fullName || "Doctoral Scholar";
+        const email = rawScholar.collegeEmail || rawScholar.email || rawScholar.user?.collegeEmail || "";
+        scholarObj = {
+          scholarId: sid,
+          studentId: sid,
+          rollNumber: rawScholar.rollNumber || "",
+          fullName: name,
+          collegeEmail: email,
+          email: email,
+          user: {
+            id: rawScholar.user?.id || "",
+            fullName: name,
+            collegeEmail: email,
+          },
+          program: rawScholar.program || "PhD",
+          department: rawScholar.department || { code: "CSE", name: "Computer Science and Engineering" },
+          supervisionStartDate: rawScholar.supervisionStartDate,
+          supervisionEndDate: rawScholar.supervisionEndDate,
+        };
+      }
+      const rawSubs = Array.isArray(res?.submissions)
+        ? res.submissions
+        : Array.isArray(res?.thesis?.submissions)
+        ? res.thesis.submissions
+        : [];
+      return {
+        scholar: scholarObj,
+        submissions: rawSubs.map((s: any) => normalizeSubmission(s)),
+      };
     } catch {
       return {
         scholar: null,
