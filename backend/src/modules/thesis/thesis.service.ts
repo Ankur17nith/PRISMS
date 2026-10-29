@@ -1439,30 +1439,57 @@ export async function forwardSubmission(
       currentStage.definition.code === STAGE_CODES.SDPC_REVIEW ||
       currentStage.definition.code === STAGE_CODES.DEAN_REVIEW
     ) {
-      // Forward to Senate Review (final stage)
-      const senateStageDef = await getOrCreateStageDefinition(STAGE_CODES.SENATE_REVIEW, "Senate Chairperson Review", 4);
-      const senateRole = await tx.role.findFirst({
-        where: { code: { in: [ROLES.CHAIRPERSON_SENATE, ROLES.CHAIRMAN] } },
-      });
-      const stage = await tx.submissionStage.create({
-        data: {
+      // Check if there are other parallel review stages at Stage 3 (SDPC / Dean) still PENDING
+      const parallelOtherPending = await tx.submissionStage.findFirst({
+        where: {
           submissionId: submission.id,
-          stageDefinitionId: senateStageDef.id,
+          id: { not: currentStage.id },
           status: "PENDING",
-          startedAt: new Date(),
+          definition: {
+            code: { in: [STAGE_CODES.SDPC_REVIEW, STAGE_CODES.DEAN_REVIEW] },
+          },
         },
       });
-      await tx.reviewAssignment.create({
-        data: {
-          submissionStageId: stage.id,
-          reviewerUserId: input.recipientUserIds[0]!,
-          reviewerRoleId: senateRole?.id ?? null,
-          assignedByUserId: userId,
-          assignmentStatus: "ASSIGNED",
-          isRequired: true,
-          assignmentNote: "Forwarded for final Senate decision",
-        },
-      });
+
+      if (!parallelOtherPending) {
+        // All parallel review branches are completed: advance to Senate Review
+        const existingSenateStage = await tx.submissionStage.findFirst({
+          where: {
+            submissionId: submission.id,
+            definition: { code: STAGE_CODES.SENATE_REVIEW },
+          },
+        });
+
+        if (!existingSenateStage) {
+          const senateStageDef = await getOrCreateStageDefinition(
+            STAGE_CODES.SENATE_REVIEW,
+            "Senate Chairperson Review",
+            4,
+          );
+          const senateRole = await tx.role.findFirst({
+            where: { code: { in: [ROLES.CHAIRPERSON_SENATE, ROLES.CHAIRMAN] } },
+          });
+          const stage = await tx.submissionStage.create({
+            data: {
+              submissionId: submission.id,
+              stageDefinitionId: senateStageDef.id,
+              status: "PENDING",
+              startedAt: new Date(),
+            },
+          });
+          await tx.reviewAssignment.create({
+            data: {
+              submissionStageId: stage.id,
+              reviewerUserId: distinctRecipientUserIds[0]!,
+              reviewerRoleId: senateRole?.id ?? null,
+              assignedByUserId: userId,
+              assignmentStatus: "ASSIGNED",
+              isRequired: true,
+              assignmentNote: "Forwarded for final Senate decision",
+            },
+          });
+        }
+      }
     }
 
     if (input.summary) {
