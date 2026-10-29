@@ -127,11 +127,19 @@ router.get("/queue", requireAuth, async (req, res) => {
   res.json({ tasks });
 });
 
-// Get authorized forwarding recipients for current stage
-router.get("/:submissionId/recipients", requireAuth, async (req, res) => {
-  const recipients = await service.getAuthorizedRecipients(uuidParam(req.params.submissionId, "submission"), req.auth!.userId);
-  res.json(recipients);
-});
+// Get authorized forwarding recipients for current stage (supports both /recipients and /eligible-recipients)
+router.get(
+  ["/:submissionId/recipients", "/:submissionId/eligible-recipients"],
+  requireAuth,
+  async (req, res) => {
+    const recipients = await service.getAuthorizedRecipients(
+      uuidParam(req.params.submissionId, "submission"),
+      req.auth!.userId,
+      typeof req.query.role === "string" ? req.query.role : undefined,
+    );
+    res.json(recipients);
+  },
+);
 
 // Forward thesis to next stage / recipients
 router.post(

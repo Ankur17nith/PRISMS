@@ -689,30 +689,53 @@ export const api = {
 
   getEligibleRecipients: async (submissionId: string, role?: string) => {
     try {
-      return await request<{
+      const res = await request<{
+        isActionable?: boolean;
         currentStage: string;
-        targetStage: string | null;
-        eligibleRecipients: Array<{
+        targetStage?: string | null;
+        allowedSelection?: string;
+        recipients?: Array<{
+          userId: string;
+          fullName: string;
+          email?: string;
+          collegeEmail?: string;
+          roleCode: string;
+          roleName?: string;
+          designation?: string;
+          departmentName?: string | null;
+        }>;
+        eligibleRecipients?: Array<{
           userId: string;
           fullName: string;
           collegeEmail: string;
           roleCode: string;
           designation?: string;
         }>;
-      }>(`/theses/${submissionId}/eligible-recipients${role ? `?role=${role}` : ""}`);
+      }>(`/theses/${submissionId}/recipients${role ? `?role=${role}` : ""}`);
+
+      const rawList = res.eligibleRecipients || res.recipients || [];
+      const list = rawList.map((r) => ({
+        userId: r.userId,
+        fullName: r.fullName,
+        collegeEmail: r.collegeEmail || (r as any).email || "",
+        roleCode: r.roleCode,
+        designation: r.designation || (r as any).roleName,
+      }));
+
+      return {
+        isActionable: res.isActionable !== false,
+        currentStage: res.currentStage || "",
+        targetStage: res.targetStage || null,
+        allowedSelection: res.allowedSelection || "single",
+        eligibleRecipients: list,
+      };
     } catch {
       return {
-        currentStage: "Supervisor Review",
-        targetStage: "HOD Review",
-        eligibleRecipients: [
-          {
-            userId: "demo-hod-1",
-            fullName: "Prof. Anil Verma",
-            collegeEmail: "hod.cse@example.test",
-            roleCode: "HOD",
-            designation: "Professor & HOD",
-          },
-        ],
+        isActionable: false,
+        currentStage: "",
+        targetStage: null,
+        allowedSelection: "none",
+        eligibleRecipients: [],
       };
     }
   },

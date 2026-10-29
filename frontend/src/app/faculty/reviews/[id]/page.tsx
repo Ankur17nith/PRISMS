@@ -12,7 +12,7 @@ import { ThesisBookReader } from "@/components/ThesisBookReader";
 export default function FacultyReviewWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { activeRole } = useAuth();
+  const { user, activeRole } = useAuth();
 
   const [submission, setSubmission] = useState<SubmissionItem | null>(null);
   const [eligibleRecipients, setEligibleRecipients] = useState<
@@ -20,6 +20,8 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
   >([]);
   const [selectedRecipientId, setSelectedRecipientId] = useState<string>("");
   const [remarks, setRemarks] = useState("");
+  const [isActionable, setIsActionable] = useState(false);
+  const [currentPendingStage, setCurrentPendingStage] = useState<any>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -35,13 +37,35 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
       try {
         const [sub, recipientsData] = await Promise.all([
           api.getSubmissionDetails(id),
-          api.getEligibleRecipients(id, activeRole || undefined).catch(() => ({ eligibleRecipients: [] })),
+          api.getEligibleRecipients(id, activeRole || undefined).catch(() => ({
+            isActionable: false,
+            currentStage: "",
+            eligibleRecipients: [],
+          })),
         ]);
         setSubmission(sub);
         setEligibleRecipients(recipientsData.eligibleRecipients || []);
         if (recipientsData.eligibleRecipients && recipientsData.eligibleRecipients.length > 0) {
           setSelectedRecipientId(recipientsData.eligibleRecipients[0].userId);
         }
+
+        const stagesList = (sub as any).stages || [];
+        const pendingStage = stagesList.find((s: any) => s.status === "PENDING");
+        setCurrentPendingStage(pendingStage || null);
+
+        const hasPendingAssignment = pendingStage?.assignments?.some((a: any) => {
+          const rId = a.reviewerId || a.reviewerUserId || a.reviewer?.id;
+          const isUser = rId === user?.id;
+          const isPending = a.status === "ASSIGNED" || a.status === "ACCEPTED";
+          return isUser && isPending;
+        });
+
+        const canAct = Boolean(
+          (sub.status === "SUBMITTED" || sub.status === "IN_REVIEW") &&
+          hasPendingAssignment &&
+          recipientsData.isActionable !== false
+        );
+        setIsActionable(canAct);
       } catch (err: unknown) {
         if (err instanceof Error) setError(err.message);
       } finally {
@@ -49,7 +73,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
       }
     }
     loadData();
-  }, [id, activeRole]);
+  }, [id, activeRole, user?.id]);
 
   // Handle Forward / Approve
   const handleForward = async () => {
@@ -186,6 +210,13 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              href={`/faculty/thesis/reader/${id}`}
+              className="bg-[#171717] hover:bg-[#333] text-white text-[12px] font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5 shadow-sm"
+            >
+              <span>📖</span>
+              <span>Open in Reader</span>
+            </Link>
             <span className="font-mono text-[13px] font-bold text-[#171717]">
               {submission?.submissionReference || "TH-2026-001"} (v{submission?.currentVersion || 1})
             </span>
@@ -238,83 +269,132 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
             </div>
           </div>
 
-          {/* Right Column: Decision Form and Authority Routing */}
+          {/* Right Column: Decision Form OR Institutional Tracking View */}
           <div className="lg:col-span-5 space-y-6">
-            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
-              <div className="border-b border-[#f2f2f0] pb-2">
-                <h3 className="font-bold text-[16px] text-[#171717]">Review Decision & Actions</h3>
-                <p className="text-[12px] text-[#666]">
-                  Select decision and authorized recipient path according to institutional ordinances.
-                </p>
-              </div>
+            {isActionable ? (
+              <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
+                <div className="border-b border-[#f2f2f0] pb-2">
+                  <h3 className="font-bold text-[16px] text-[#171717]">Review Decision & Actions</h3>
+                  <p className="text-[12px] text-[#666]">
+                    Select decision and authorized recipient path according to institutional ordinances.
+                  </p>
+                </div>
 
-              {/* Dynamic Recipient Routing (only for forwarding) */}
-              {eligibleRecipients.length > 0 && (
+                {/* Dynamic Recipient Routing (only for forwarding) */}
+                {eligibleRecipients.length > 0 && (
+                  <div>
+                    <label className="block text-[12.5px] font-bold text-[#171717] mb-1">
+                      Route to Recipient (Next Authority) *
+                    </label>
+                    <select
+                      value={selectedRecipientId}
+                      onChange={(e) => setSelectedRecipientId(e.target.value)}
+                      className="w-full bg-[#f7f7f6] border border-[#e2e2df] rounded-[6px] px-3 py-2 text-[13px] text-[#171717] focus:outline-none focus:border-[#daa32f]"
+                    >
+                      {eligibleRecipients.map((rec) => (
+                        <option key={rec.userId} value={rec.userId}>
+                          {rec.fullName} — {rec.roleCode} {rec.designation ? `(${rec.designation})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Remarks / Comments */}
                 <div>
                   <label className="block text-[12.5px] font-bold text-[#171717] mb-1">
-                    Route to Recipient (Next Authority) *
+                    Review Remarks & Feedback *
                   </label>
-                  <select
-                    value={selectedRecipientId}
-                    onChange={(e) => setSelectedRecipientId(e.target.value)}
+                  <textarea
+                    rows={4}
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Enter remarks for forward, or required revisions for return/rejection..."
                     className="w-full bg-[#f7f7f6] border border-[#e2e2df] rounded-[6px] px-3 py-2 text-[13px] text-[#171717] focus:outline-none focus:border-[#daa32f]"
-                  >
-                    {eligibleRecipients.map((rec) => (
-                      <option key={rec.userId} value={rec.userId}>
-                        {rec.fullName} — {rec.roleCode} {rec.designation ? `(${rec.designation})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <p className="text-[11px] text-[#666] mt-1">
+                    Remarks are mandatory when returning for revision or rejecting.
+                  </p>
                 </div>
-              )}
 
-              {/* Remarks / Comments */}
-              <div>
-                <label className="block text-[12.5px] font-bold text-[#171717] mb-1">
-                  Review Remarks & Feedback *
-                </label>
-                <textarea
-                  rows={4}
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="Enter remarks for forward, or required revisions for return/rejection..."
-                  className="w-full bg-[#f7f7f6] border border-[#e2e2df] rounded-[6px] px-3 py-2 text-[13px] text-[#171717] focus:outline-none focus:border-[#daa32f]"
-                />
-                <p className="text-[11px] text-[#666] mt-1">
-                  Remarks are mandatory when returning for revision or rejecting.
-                </p>
+                {/* Decision Action Buttons matching Figma */}
+                <div className="space-y-2.5 pt-2">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleForward}
+                    className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-2.5 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer shadow-sm"
+                  >
+                    {actionLoading ? "Processing..." : "Approve & Forward to Next Authority"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleReturn}
+                    className="w-full bg-white hover:bg-[#fff7e6] border border-[#daa32f] text-[#8a570d] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
+                  >
+                    Return to Scholar for Revision
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleReject}
+                    className="w-full bg-white hover:bg-[#fff1ef] border border-[#b42318] text-[#b42318] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
+                  >
+                    Formal Rejection
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
+                <div className="border-b border-[#f2f2f0] pb-2">
+                  <h3 className="font-bold text-[16px] text-[#171717]">Workflow Status & Authority Tracking</h3>
+                  <p className="text-[12px] text-[#666]">
+                    Submission record is displayed in institutional tracking mode.
+                  </p>
+                </div>
 
-              {/* Decision Action Buttons matching Figma */}
-              <div className="space-y-2.5 pt-2">
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleForward}
-                  className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-2.5 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer shadow-sm"
-                >
-                  {actionLoading ? "Processing..." : "Approve & Forward to Next Authority"}
-                </button>
+                <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-[6px] p-4 text-[12.5px] text-[#0369a1] space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-[#0c4a6e]">
+                    <span>📋</span>
+                    <span>Current Stage: {currentPendingStage?.stageName || currentPendingStage?.definition?.name || currentPendingStage?.stageCode || (submission?.status === "APPROVED" ? "Approved" : "Under Evaluation")}</span>
+                  </div>
+                  <p className="leading-relaxed text-[#0284c7]">
+                    {submission?.status === "APPROVED"
+                      ? "This dissertation submission has completed all institutional review stages and received final Senate approval."
+                      : submission?.status === "REJECTED"
+                      ? "This dissertation submission was formally rejected in institutional review."
+                      : "Your evaluation has been completed and forwarded. This submission is currently undergoing evaluation by subsequent authorities."}
+                  </p>
+                  {currentPendingStage?.assignments && currentPendingStage.assignments.length > 0 && (
+                    <div className="pt-2 border-t border-[#bae6fd]/60 text-[11.5px]">
+                      <span className="font-bold text-[#0c4a6e]">Designated Reviewer: </span>
+                      <span>{currentPendingStage.assignments.map((a: any) => a.reviewerName || a.reviewer?.fullName || a.reviewerRole).join(", ")}</span>
+                    </div>
+                  )}
+                </div>
 
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleReturn}
-                  className="w-full bg-white hover:bg-[#fff7e6] border border-[#daa32f] text-[#8a570d] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
-                >
-                  Return to Scholar for Revision
-                </button>
-
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleReject}
-                  className="w-full bg-white hover:bg-[#fff1ef] border border-[#b42318] text-[#b42318] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
-                >
-                  Formal Rejection
-                </button>
+                {/* Prior Comments & Recorded Reviewer Decisions */}
+                {submission?.decisions && submission.decisions.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <h4 className="text-[12px] font-bold text-[#171717]">Recorded Review Decisions:</h4>
+                    {submission.decisions.map((dec) => (
+                      <div key={dec.id} className="p-3 bg-[#fafaf9] rounded border border-[#e2e2df] text-[12px]">
+                        <div className="flex justify-between font-bold text-[#171717] mb-0.5">
+                          <span>{dec.reviewer?.fullName || "Reviewer"}</span>
+                          <span className={dec.decision === "APPROVE" ? "text-[#166534]" : "text-[#b42318]"}>
+                            {dec.decision}
+                          </span>
+                        </div>
+                        {dec.remarks && <p className="text-[#666] text-[11.5px] mt-1 italic">"{dec.remarks}"</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
             {/* Workflow Stage Timeline */}
             <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-3">
@@ -325,7 +405,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
                 {submission?.stages?.map((st, i) => (
                   <div key={st.id} className="flex items-center justify-between">
                     <span className="font-medium text-[#171717]">
-                      {i + 1}. {st.stageDefinition?.name || st.stageDefinition?.code}
+                      {i + 1}. {st.stageDefinition?.name || (st as any).stageName || st.stageDefinition?.code || (st as any).stageCode}
                     </span>
                     <span
                       className={`font-bold text-[11px] px-2 py-0.5 rounded ${

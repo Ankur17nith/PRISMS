@@ -11,7 +11,7 @@ import { api, SubmissionItem } from "@/lib/api";
 export default function FacultyHodReviewWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
-  const { activeRole } = useAuth();
+  const { user, activeRole } = useAuth();
 
   const [submission, setSubmission] = useState<SubmissionItem | null>(null);
   const [eligibleRecipients, setEligibleRecipients] = useState<
@@ -21,6 +21,8 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
   const [remarks, setRemarks] = useState("");
   const [privateNote, setPrivateNote] = useState("");
   const [privateNoteSaved, setPrivateNoteSaved] = useState(false);
+  const [isActionable, setIsActionable] = useState(false);
+  const [currentPendingStage, setCurrentPendingStage] = useState<any>(null);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -36,14 +38,40 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
       try {
         const [sub, recipientsData] = await Promise.all([
           api.getSubmissionDetails(id),
-          api.getEligibleRecipients(id, "HOD").catch(() => ({ eligibleRecipients: [] })),
+          api.getEligibleRecipients(id, "HOD").catch(() => ({
+            isActionable: false,
+            currentStage: "",
+            eligibleRecipients: [],
+          })),
         ]);
         setSubmission(sub);
         setEligibleRecipients(recipientsData.eligibleRecipients || []);
-        // By default select all eligible recipients (SDPC + Dean Academics for parallel review if available)
         if (recipientsData.eligibleRecipients && recipientsData.eligibleRecipients.length > 0) {
           setSelectedRecipientIds(recipientsData.eligibleRecipients.map((r) => r.userId));
         }
+
+        const stagesList = (sub as any).stages || [];
+        const pendingStage = stagesList.find((s: any) => s.status === "PENDING");
+        setCurrentPendingStage(pendingStage || null);
+
+        const hasPendingAssignment = pendingStage?.assignments?.some((a: any) => {
+          const rId = a.reviewerId || a.reviewerUserId || a.reviewer?.id;
+          const isUser = rId === user?.id;
+          const isPending = a.status === "ASSIGNED" || a.status === "ACCEPTED";
+          return isUser && isPending;
+        });
+
+        const isHodStage =
+          pendingStage?.stageCode === "HOD_REVIEW" ||
+          pendingStage?.definition?.code === "HOD_REVIEW";
+
+        const canAct = Boolean(
+          (sub.status === "SUBMITTED" || sub.status === "IN_REVIEW") &&
+          hasPendingAssignment &&
+          isHodStage &&
+          recipientsData.isActionable !== false
+        );
+        setIsActionable(canAct);
       } catch (err: unknown) {
         if (err instanceof Error) setError(err.message);
       } finally {
@@ -51,7 +79,7 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
       }
     }
     loadData();
-  }, [id]);
+  }, [id, user?.id]);
 
   const toggleRecipient = (userId: string) => {
     setSelectedRecipientIds((prev) =>
@@ -194,11 +222,18 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
           </div>
 
           <div className="flex items-center gap-3">
+            <Link
+              href={`/faculty/thesis/reader/${id}`}
+              className="bg-[#171717] hover:bg-[#333] text-white text-[12px] font-bold px-3 py-1.5 rounded transition flex items-center gap-1.5 shadow-sm"
+            >
+              <span>📖</span>
+              <span>Open in Reader</span>
+            </Link>
             <span className="font-mono text-[13px] font-bold text-[#171717]">
               {submission?.submissionReference || "TH-2026-001"} (v{submission?.currentVersion || 1})
             </span>
             <span className="text-[12px] font-bold px-3 py-1 rounded-[4px] bg-[#fff7e6] text-[#8a570d]">
-              Under HOD Review
+              {currentPendingStage?.stageName || currentPendingStage?.definition?.name || (submission?.status === "APPROVED" ? "Approved" : "Under Evaluation")}
             </span>
           </div>
         </div>
@@ -240,98 +275,144 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
             <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-2">
               <h3 className="font-bold text-[14.5px] text-[#171717]">Version History · Preserved Records</h3>
               <p className="text-[12.5px] text-[#666]">
-                v{submission?.currentVersion} · Current · {latestFile?.originalFileName || "thesis.pdf"} · Under HOD Review
+                v{submission?.currentVersion} · Current · {latestFile?.originalFileName || "thesis.pdf"} · Preserved
               </p>
             </div>
           </div>
 
-          {/* Right Column: Decision Panel with Parallel Routing to SDPC & Dean Academics */}
+          {/* Right Column: Decision Panel OR Institutional Tracking Panel */}
           <div className="lg:col-span-5 space-y-6">
-            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
-              <div className="border-b border-[#f2f2f0] pb-2">
-                <h3 className="font-bold text-[16px] text-[#171717]">HOD Review Decision</h3>
-                <p className="text-[12px] text-[#666]">
-                  Forward to Senate Doctoral Programme Committee (SDPC) and/or Dean Academics for further review.
-                </p>
-              </div>
-
-              {/* Parallel Routing Selection */}
-              {eligibleRecipients.length > 0 && (
-                <div>
-                  <label className="block text-[12.5px] font-bold text-[#171717] mb-1.5">
-                    Select Target Recipient(s) for Further Institutional Review:
-                  </label>
-                  <div className="space-y-2 border border-[#e2e2df] rounded-[6px] p-3 bg-[#f7f7f6]">
-                    {eligibleRecipients.map((rec) => {
-                      const isSelected = selectedRecipientIds.includes(rec.userId);
-                      return (
-                        <label
-                          key={rec.userId}
-                          className="flex items-center gap-2.5 text-[12.5px] text-[#171717] cursor-pointer"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleRecipient(rec.userId)}
-                          />
-                          <span className="font-semibold">{rec.fullName}</span>
-                          <span className="text-[11px] text-[#666] bg-white px-1.5 py-0.5 rounded border border-[#e2e2df]">
-                            {rec.roleCode}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <p className="text-[11px] text-[#666] mt-1">
-                    Parallel routing allows simultaneous evaluation by SDPC and Dean of Academic Affairs.
+            {isActionable ? (
+              <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
+                <div className="border-b border-[#f2f2f0] pb-2">
+                  <h3 className="font-bold text-[16px] text-[#171717]">HOD Review Decision</h3>
+                  <p className="text-[12px] text-[#666]">
+                    Forward to Senate Doctoral Programme Committee (SDPC) and/or Dean Academics for further review.
                   </p>
                 </div>
-              )}
 
-              {/* Review Remarks */}
-              <div>
-                <label className="block text-[12.5px] font-bold text-[#171717] mb-1">
-                  HOD Recommendations / Remarks
-                </label>
-                <textarea
-                  rows={3}
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="Enter institutional recommendations or required revisions..."
-                  className="w-full bg-[#f7f7f6] border border-[#e2e2df] rounded-[6px] px-3 py-2 text-[13px] text-[#171717] focus:outline-none focus:border-[#daa32f]"
-                />
+                {/* Parallel Routing Selection */}
+                {eligibleRecipients.length > 0 && (
+                  <div>
+                    <label className="block text-[12.5px] font-bold text-[#171717] mb-1.5">
+                      Select Target Recipient(s) for Further Institutional Review:
+                    </label>
+                    <div className="space-y-2 border border-[#e2e2df] rounded-[6px] p-3 bg-[#f7f7f6]">
+                      {eligibleRecipients.map((rec) => {
+                        const isSelected = selectedRecipientIds.includes(rec.userId);
+                        return (
+                          <label
+                            key={rec.userId}
+                            className="flex items-center gap-2.5 text-[12.5px] text-[#171717] cursor-pointer"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => toggleRecipient(rec.userId)}
+                            />
+                            <span className="font-semibold">{rec.fullName}</span>
+                            <span className="text-[11px] text-[#666] bg-white px-1.5 py-0.5 rounded border border-[#e2e2df]">
+                              {rec.roleCode}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-[#666] mt-1">
+                      Parallel routing allows simultaneous evaluation by SDPC and Dean of Academic Affairs.
+                    </p>
+                  </div>
+                )}
+
+                {/* Review Remarks */}
+                <div>
+                  <label className="block text-[12.5px] font-bold text-[#171717] mb-1">
+                    HOD Recommendations / Remarks
+                  </label>
+                  <textarea
+                    rows={3}
+                    value={remarks}
+                    onChange={(e) => setRemarks(e.target.value)}
+                    placeholder="Enter institutional recommendations or required revisions..."
+                    className="w-full bg-[#f7f7f6] border border-[#e2e2df] rounded-[6px] px-3 py-2 text-[13px] text-[#171717] focus:outline-none focus:border-[#daa32f]"
+                  />
+                </div>
+
+                {/* Action Buttons matching Figma 113:3070 */}
+                <div className="space-y-2.5 pt-2">
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleForward}
+                    className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-2.5 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer shadow-sm"
+                  >
+                    {actionLoading ? "Processing..." : "Forward to Further Institutional Review"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleReturn}
+                    className="w-full bg-white hover:bg-[#fff7e6] border border-[#daa32f] text-[#8a570d] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
+                  >
+                    Request Revision
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={actionLoading}
+                    onClick={handleReject}
+                    className="w-full bg-white hover:bg-[#fff1ef] border border-[#b42318] text-[#b42318] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
+                  >
+                    Reject
+                  </button>
+                </div>
               </div>
+            ) : (
+              <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
+                <div className="border-b border-[#f2f2f0] pb-2">
+                  <h3 className="font-bold text-[16px] text-[#171717]">Workflow Status & Authority Tracking</h3>
+                  <p className="text-[12px] text-[#666]">
+                    HOD review stage is complete. Record is in institutional tracking mode.
+                  </p>
+                </div>
 
-              {/* Action Buttons matching Figma 113:3070 */}
-              <div className="space-y-2.5 pt-2">
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleForward}
-                  className="w-full bg-[#16a34a] hover:bg-[#15803d] text-white font-bold py-2.5 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer shadow-sm"
-                >
-                  {actionLoading ? "Processing..." : "Forward to Further Institutional Review"}
-                </button>
+                <div className="bg-[#f0f9ff] border border-[#bae6fd] rounded-[6px] p-4 text-[12.5px] text-[#0369a1] space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-[#0c4a6e]">
+                    <span>📋</span>
+                    <span>Current Stage: {currentPendingStage?.stageName || currentPendingStage?.definition?.name || (submission?.status === "APPROVED" ? "Approved" : "Under Evaluation")}</span>
+                  </div>
+                  <p className="leading-relaxed text-[#0284c7]">
+                    {submission?.status === "APPROVED"
+                      ? "This thesis submission has completed institutional review and received final Senate approval."
+                      : "Departmental evaluation has been forwarded. The submission is currently undergoing institute-level evaluation."}
+                  </p>
+                  {currentPendingStage?.assignments && currentPendingStage.assignments.length > 0 && (
+                    <div className="pt-2 border-t border-[#bae6fd]/60 text-[11.5px]">
+                      <span className="font-bold text-[#0c4a6e]">Designated Authority: </span>
+                      <span>{currentPendingStage.assignments.map((a: any) => a.reviewerName || a.reviewer?.fullName || a.reviewerRole).join(", ")}</span>
+                    </div>
+                  )}
+                </div>
 
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleReturn}
-                  className="w-full bg-white hover:bg-[#fff7e6] border border-[#daa32f] text-[#8a570d] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
-                >
-                  Request Revision
-                </button>
-
-                <button
-                  type="button"
-                  disabled={actionLoading}
-                  onClick={handleReject}
-                  className="w-full bg-white hover:bg-[#fff1ef] border border-[#b42318] text-[#b42318] font-bold py-2 rounded-[7px] text-[13px] transition disabled:opacity-60 cursor-pointer"
-                >
-                  Reject
-                </button>
+                {submission?.decisions && submission.decisions.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <h4 className="text-[12px] font-bold text-[#171717]">Recorded Decisions:</h4>
+                    {submission.decisions.map((dec) => (
+                      <div key={dec.id} className="p-3 bg-[#fafaf9] rounded border border-[#e2e2df] text-[12px]">
+                        <div className="flex justify-between font-bold text-[#171717] mb-0.5">
+                          <span>{dec.reviewer?.fullName || "Reviewer"}</span>
+                          <span className={dec.decision === "APPROVE" ? "text-[#166534]" : "text-[#b42318]"}>
+                            {dec.decision}
+                          </span>
+                        </div>
+                        {dec.remarks && <p className="text-[#666] text-[11.5px] mt-1 italic">"{dec.remarks}"</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
             {/* Internal Faculty Notes panel matching Figma 113:3077 */}
             <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-3">

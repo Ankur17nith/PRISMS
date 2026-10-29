@@ -1013,7 +1013,7 @@ export async function getFacultyReviewQueue(
   });
 }
 
-export async function getAuthorizedRecipients(submissionId: string, userId: string) {
+export async function getAuthorizedRecipients(submissionId: string, userId: string, role?: string) {
   const submission = await prisma.thesisSubmission.findUnique({
     where: { id: submissionId },
     include: {
@@ -1031,7 +1031,14 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
 
   const currentStage = submission.stages[0];
   if (!currentStage) {
-    throw new AppError(400, "No active workflow stage is currently pending", "NO_ACTIVE_STAGE");
+    return {
+      isActionable: false,
+      currentStage: "Completed",
+      targetStage: null,
+      allowedSelection: "none",
+      recipients: [],
+      eligibleRecipients: [],
+    };
   }
 
   // Verify that requester is assigned reviewer for this active stage
@@ -1059,17 +1066,24 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
       },
     });
 
+    const mapped = hodRoles.map((r) => ({
+      userId: r.user.id,
+      fullName: r.user.fullName,
+      email: r.user.collegeEmail,
+      collegeEmail: r.user.collegeEmail,
+      roleCode: ROLES.HOD,
+      roleName: r.role.name,
+      designation: r.role.name,
+      departmentName: r.department?.name ?? null,
+    }));
+
     return {
+      isActionable: true,
       currentStage: currentStage.definition.name,
+      targetStage: "Head of Department Review",
       allowedSelection: "single",
-      recipients: hodRoles.map((r) => ({
-        userId: r.user.id,
-        fullName: r.user.fullName,
-        email: r.user.collegeEmail,
-        roleCode: ROLES.HOD,
-        roleName: r.role.name,
-        departmentName: r.department?.name ?? null,
-      })),
+      recipients: mapped,
+      eligibleRecipients: mapped,
     };
   }
 
@@ -1091,17 +1105,24 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
       },
     });
 
+    const mapped = targetRoles.map((r) => ({
+      userId: r.user.id,
+      fullName: r.user.fullName,
+      email: r.user.collegeEmail,
+      collegeEmail: r.user.collegeEmail,
+      roleCode: normalizeRoleCode(r.role.code),
+      roleName: r.role.name,
+      designation: r.role.name,
+      departmentName: r.department?.name ?? null,
+    }));
+
     return {
+      isActionable: true,
       currentStage: currentStage.definition.name,
+      targetStage: "SDPC & Dean Review",
       allowedSelection: "single_or_both",
-      recipients: targetRoles.map((r) => ({
-        userId: r.user.id,
-        fullName: r.user.fullName,
-        email: r.user.collegeEmail,
-        roleCode: normalizeRoleCode(r.role.code),
-        roleName: r.role.name,
-        departmentName: r.department?.name ?? null,
-      })),
+      recipients: mapped,
+      eligibleRecipients: mapped,
     };
   }
 
@@ -1125,24 +1146,34 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
       },
     });
 
+    const mapped = senateRoles.map((r) => ({
+      userId: r.user.id,
+      fullName: r.user.fullName,
+      email: r.user.collegeEmail,
+      collegeEmail: r.user.collegeEmail,
+      roleCode: ROLES.CHAIRPERSON_SENATE,
+      roleName: r.role.name,
+      designation: r.role.name,
+      departmentName: "Institute-wide",
+    }));
+
     return {
+      isActionable: true,
       currentStage: currentStage.definition.name,
+      targetStage: "Senate Review & Final Approval",
       allowedSelection: "single",
-      recipients: senateRoles.map((r) => ({
-        userId: r.user.id,
-        fullName: r.user.fullName,
-        email: r.user.collegeEmail,
-        roleCode: ROLES.CHAIRPERSON_SENATE,
-        roleName: r.role.name,
-        departmentName: "Institute-wide",
-      })),
+      recipients: mapped,
+      eligibleRecipients: mapped,
     };
   }
 
   return {
+    isActionable: true,
     currentStage: currentStage.definition.name,
+    targetStage: null,
     allowedSelection: "final_decision",
     recipients: [],
+    eligibleRecipients: [],
   };
 }
 
