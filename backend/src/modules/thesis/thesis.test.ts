@@ -777,4 +777,116 @@ describe("PRISMS Thesis Workflow & Security Integration Suite", () => {
       assert.equal(deniedDownload.reason, "hod_download_prohibited");
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // L. Frontend Integration & Data Contract Regressions
+  // ---------------------------------------------------------------------------
+  describe("L. Frontend Integration & Data Contract Regressions", () => {
+    it("should safely return 404 RESOURCE_NOT_FOUND for 'undefined' submissionId parameter", async () => {
+      const res = await request(app)
+        .get("/theses/undefined")
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+
+      assert.equal(res.status, 404);
+      assert.equal(res.body.error.code, "RESOURCE_NOT_FOUND");
+    });
+
+    it("should safely return 404 RESOURCE_NOT_FOUND for 'undefined' scholarId parameter", async () => {
+      const res = await request(app)
+        .get("/theses/supervisor/scholars/undefined")
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+
+      assert.equal(res.status, 404);
+      assert.equal(res.body.error.code, "RESOURCE_NOT_FOUND");
+    });
+
+    it("should return submission details with complete student relations, title, and serialized fileSizeBytes", async () => {
+      const res = await request(app)
+        .get(`/theses/${submissionId}`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+
+      assert.equal(res.status, 200);
+      assert.ok(res.body.submission);
+      const sub = res.body.submission;
+
+      // Status, title, and version guarantees
+      assert.ok(typeof sub.status === "string" && sub.status.length > 0);
+      assert.ok(typeof sub.title === "string");
+      assert.ok(typeof sub.submissionReference === "string");
+      assert.ok(typeof sub.currentVersion === "number");
+
+      // Student and nested user relations
+      assert.ok(sub.student, "submission.student must exist");
+      assert.ok(sub.student.user, "submission.student.user must exist");
+      assert.ok(typeof sub.student.user.fullName === "string");
+      assert.ok(typeof sub.student.user.collegeEmail === "string");
+      assert.ok(sub.student.department, "submission.student.department must exist");
+      assert.ok(typeof sub.student.department.name === "string");
+
+      // File structure and BigInt serialization
+      assert.ok(Array.isArray(sub.files));
+      assert.ok(sub.files.length > 0);
+      const file = sub.files[0];
+      assert.ok(typeof file.fileSizeBytes === "number", "fileSizeBytes must be serialized as number");
+      assert.ok(file.fileSizeBytes > 0);
+      assert.ok(file.originalFileName || file.originalFilename);
+    });
+
+    it("should return supervisor scholars with scholarId, studentId, and activeSubmission", async () => {
+      const res = await request(app)
+        .get("/theses/supervisor/scholars")
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+
+      assert.equal(res.status, 200);
+      assert.ok(Array.isArray(res.body.scholars));
+      assert.ok(res.body.scholars.length > 0);
+
+      const scholar = res.body.scholars[0];
+      assert.ok(scholar.scholarId, "scholarId must be populated");
+      assert.ok(scholar.studentId, "studentId must be populated");
+      assert.equal(scholar.scholarId, scholar.studentId);
+      assert.ok(typeof scholar.fullName === "string");
+      assert.ok(typeof scholar.admissionStatus === "string");
+
+      if (scholar.activeSubmission) {
+        assert.ok(typeof scholar.activeSubmission.status === "string");
+        assert.ok(typeof scholar.activeSubmission.currentVersion === "number");
+        assert.ok(typeof scholar.activeSubmission.submissionReference === "string");
+      }
+    });
+
+    it("should return supervisor scholar history with scholar.user and submissions list", async () => {
+      const res = await request(app)
+        .get(`/theses/supervisor/scholars/${student1Id}`)
+        .set("Authorization", `Bearer ${supervisor1Token}`);
+
+      assert.equal(res.status, 200);
+      assert.ok(res.body.scholar, "scholar object must exist");
+      assert.ok(res.body.scholar.user, "scholar.user object must exist");
+      assert.ok(typeof res.body.scholar.user.id === "string");
+      assert.ok(typeof res.body.scholar.user.fullName === "string");
+      assert.ok(typeof res.body.scholar.user.collegeEmail === "string");
+      assert.equal(res.body.scholar.scholarId, student1Id);
+
+      assert.ok(Array.isArray(res.body.submissions), "submissions must be an array at root");
+      assert.ok(res.body.submissions.length > 0);
+      assert.ok(typeof res.body.submissions[0].status === "string");
+    });
+
+    it("should return student submissions with submissionReference, title, and currentVersion", async () => {
+      const res = await request(app)
+        .get("/theses/my")
+        .set("Authorization", `Bearer ${student1Token}`);
+
+      assert.equal(res.status, 200);
+      assert.ok(Array.isArray(res.body.submissions));
+      assert.ok(res.body.submissions.length > 0);
+
+      const sub = res.body.submissions[0];
+      assert.ok(typeof sub.status === "string");
+      assert.ok(typeof sub.title === "string");
+      assert.ok(typeof sub.submissionReference === "string");
+      assert.ok(typeof sub.currentVersion === "number");
+    });
+  });
 });
