@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { useAuth } from "@/lib/auth";
 import { api, SubmissionItem } from "@/lib/api";
+import { ThesisBookReader } from "@/components/ThesisBookReader";
 
 export default function FacultyReviewWorkspacePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -201,41 +202,17 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
 
         {/* 2-Column Review Layout matching Figma 113:2713 */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: Document Viewer and History */}
+          {/* Left Column: Thesis Document Book Reader */}
           <div className="lg:col-span-7 space-y-6">
-            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between border-b border-[#f2f2f0] pb-2">
-                <div>
-                  <h3 className="font-bold text-[15px] text-[#171717]">Dissertation Document</h3>
-                  <p className="text-[12px] text-[#666]">
-                    {latestFile ? `${latestFile.originalFileName} (${(latestFile.fileSizeBytes / (1024 * 1024)).toFixed(2)} MB)` : "thesis.pdf"}
-                  </p>
-                </div>
-
-                {latestFile && (
-                  <a
-                    href={api.getDownloadUrl(submission!.id, latestFile.id)}
-                    className="text-[12px] font-bold text-[#166534] bg-[#edf8ef] hover:bg-[#e0f2e3] px-3 py-1.5 rounded transition"
-                  >
-                    Download PDF
-                  </a>
-                )}
-              </div>
-
-              {latestFile ? (
-                <div className="w-full h-[620px] bg-[#f2f2f0] border border-[#e2e2df] rounded overflow-hidden">
-                  <iframe
-                    src={api.getViewUrl(submission!.id, latestFile.id)}
-                    className="w-full h-full"
-                    title="Document Preview"
-                  />
-                </div>
-              ) : (
-                <div className="h-64 flex items-center justify-center text-[#666] text-[13px]">
-                  No document attached to this submission version.
-                </div>
-              )}
-            </div>
+            {submission && (
+              <ThesisBookReader
+                submissionId={submission.id}
+                fileId={latestFile?.id}
+                filename={latestFile?.originalFileName || "thesis_document.pdf"}
+                canDownload={activeRole !== "HOD"}
+                userRole={activeRole}
+              />
+            )}
 
             {/* Version History info panel */}
             <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm">

@@ -4,6 +4,7 @@ import React, { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ApplicationShell } from "@/components/ApplicationShell";
+import { ThesisBookReader } from "@/components/ThesisBookReader";
 import { api, SubmissionItem } from "@/lib/api";
 
 function SubmissionDetailsContent() {
@@ -193,39 +194,15 @@ function SubmissionDetailsContent() {
 
           {/* Right Column: Secure Document Viewer */}
           <div className="lg:col-span-7 space-y-4">
-            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between border-b border-[#f2f2f0] pb-2">
-                <div>
-                  <h3 className="font-bold text-[15px] text-[#171717]">Thesis Document Viewer</h3>
-                  <p className="text-[11.5px] text-[#666]">
-                    {latestFile ? latestFile.originalFileName : "thesis.pdf"}
-                  </p>
-                </div>
-
-                {latestFile && (
-                  <a
-                    href={api.getDownloadUrl(submission.id, latestFile.id)}
-                    className="text-[12px] font-bold text-[#166534] bg-[#edf8ef] hover:bg-[#e0f2e3] px-3 py-1.5 rounded transition"
-                  >
-                    Download PDF
-                  </a>
-                )}
-              </div>
-
-              {latestFile ? (
-                <div className="w-full h-[620px] bg-[#f2f2f0] border border-[#e2e2df] rounded overflow-hidden">
-                  <iframe
-                    src={api.getViewUrl(submission.id, latestFile.id)}
-                    className="w-full h-full"
-                    title="Thesis Viewer"
-                  />
-                </div>
-              ) : (
-                <div className="h-64 flex items-center justify-center text-[#666] text-[13px]">
-                  No uploaded document file available.
-                </div>
-              )}
-            </div>
+            {submission && (
+              <ThesisBookReader
+                submissionId={submission.id}
+                fileId={latestFile?.id}
+                filename={latestFile?.originalFileName || "thesis_document.pdf"}
+                canDownload={true}
+                userRole="STUDENT"
+              />
+            )}
           </div>
         </div>
       </div>

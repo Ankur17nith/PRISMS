@@ -781,9 +781,9 @@ export const api = {
   },
 
   // Document URLs
-  getViewUrl: (submissionId: string, fileScanId: string) =>
+  getViewUrl: (submissionId: string, fileScanId?: string) =>
     `/theses/${submissionId}/file/view`,
 
-  getDownloadUrl: (submissionId: string, fileScanId: string) =>
+  getDownloadUrl: (submissionId: string, fileScanId?: string) =>
     `/theses/${submissionId}/file/download`,
 };

@@ -4,6 +4,7 @@ import React, { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ApplicationShell } from "@/components/ApplicationShell";
+import { ThesisBookReader } from "@/components/ThesisBookReader";
 import { useAuth } from "@/lib/auth";
 import { api, SubmissionItem } from "@/lib/api";
 
@@ -202,41 +203,21 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: STRICT VIEW-ONLY Document Viewer (NO DOWNLOAD BUTTON) matching Figma 113:3019 */}
           <div className="lg:col-span-7 space-y-6">
-            <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-3">
-              <div className="flex items-center justify-between border-b border-[#f2f2f0] pb-2">
-                <div>
-                  <h3 className="font-bold text-[15px] text-[#171717]">Thesis Viewer · HOD View Only</h3>
-                  <p className="text-[12px] text-[#666]">
-                    {latestFile ? `${latestFile.originalFileName} (v${submission?.currentVersion})` : "thesis.pdf"}
-                  </p>
-                </div>
+            {submission && (
+              <ThesisBookReader
+                submissionId={submission.id}
+                fileId={latestFile?.id}
+                filename={latestFile?.originalFileName || "thesis_document.pdf"}
+                canDownload={false}
+                userRole="HOD"
+              />
+            )}
 
-                {/* Notice: STRICT RULE ENFORCEMENT - No download button shown */}
-                <span className="text-[11px] font-bold text-[#8a570d] bg-[#fff7e6] px-2.5 py-1 rounded border border-[#daa32f]">
-                  Browser View Only
-                </span>
-              </div>
-
-              {latestFile ? (
-                <div className="w-full h-[620px] bg-[#f2f2f0] border border-[#e2e2df] rounded overflow-hidden relative">
-                  <iframe
-                    src={api.getViewUrl(submission!.id, latestFile.id)}
-                    className="w-full h-full"
-                    title="Thesis Viewer - HOD View Only"
-                  />
-                </div>
-              ) : (
-                <div className="h-64 flex items-center justify-center text-[#666] text-[13px]">
-                  No document attached.
-                </div>
-              )}
-
-              {/* Informational Policy Banner matching Figma 113:3044 */}
-              <div className="p-3 bg-[#f2f2f0] rounded text-[12px] text-[#525252] border border-[#e2e2df]">
-                <span className="font-bold text-[#171717] block mb-0.5">Institutional Access Control:</span>
-                This HOD assignment permits reviewing the thesis document within this portal workspace only.
-                Local downloading, printing, and file export are prohibited by policy and blocked by the server.
-              </div>
+            {/* Informational Policy Banner matching Figma 113:3044 */}
+            <div className="p-3 bg-[#f2f2f0] rounded text-[12px] text-[#525252] border border-[#e2e2df]">
+              <span className="font-bold text-[#171717] block mb-0.5">Institutional Access Control:</span>
+              This HOD assignment permits reviewing the thesis document within this portal workspace only.
+              Local downloading, printing, and file export are prohibited by policy and blocked by the server.
             </div>
 
             {/* Preserved Versions List */}
