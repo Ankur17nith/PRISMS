@@ -265,7 +265,7 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
         {/* 2-Column Review Layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: STRICT VIEW-ONLY Document Viewer (NO DOWNLOAD BUTTON) matching Figma 113:3019 */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7 min-w-0 space-y-6">
             {submission && (
               <ThesisBookReader
                 submissionId={submission.id}
@@ -313,7 +313,7 @@ export default function FacultyHodReviewWorkspacePage({ params }: { params: Prom
           </div>
 
           {/* Right Column: Decision Panel OR Institutional Tracking Panel */}
-          <div className="lg:col-span-5 space-y-6">
+          <div className="lg:col-span-5 min-w-0 space-y-6">
             {isActionable ? (
               <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
                 <div className="border-b border-[#f2f2f0] pb-2">

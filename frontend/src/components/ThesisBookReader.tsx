@@ -19,6 +19,7 @@ export function ThesisBookReader({
   userRole,
 }: ThesisBookReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
   const renderPromiseRef = useRef<Promise<void> | null>(null);
@@ -29,13 +30,88 @@ export function ThesisBookReader({
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [numPages, setNumPages] = useState<number>(0);
-  const [scale, setScale] = useState<number>(1.2);
+  const [scale, setScale] = useState<number>(1.0);
+  const [autoFitWidth, setAutoFitWidth] = useState<boolean>(true);
   const [pageInput, setPageInput] = useState<string>("1");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [containerWidth, setContainerWidth] = useState<number>(0);
 
-  // 1. Authenticated fetch of the PDF binary
+  // 1. Measure and observe available container width with ResizeObserver
+  useEffect(() => {
+    const target = scrollAreaRef.current || containerRef.current;
+    if (!target) return;
+
+    const measureWidth = () => {
+      const el = scrollAreaRef.current || containerRef.current;
+      if (el && el.clientWidth > 0) {
+        setContainerWidth(el.clientWidth);
+      }
+    };
+
+    measureWidth();
+
+    let resizeTimer: NodeJS.Timeout;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const w = Math.floor(entry.contentRect.width);
+        if (w > 0) {
+          clearTimeout(resizeTimer);
+          resizeTimer = setTimeout(() => {
+            setContainerWidth(w);
+          }, 80);
+        }
+      }
+    });
+
+    observer.observe(target);
+    return () => {
+      clearTimeout(resizeTimer);
+      observer.disconnect();
+    };
+  }, []);
+
+  // Fullscreen change listener
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isFull = !!document.fullscreenElement;
+      setIsFullscreen(isFull);
+      setTimeout(() => {
+        const el = scrollAreaRef.current || containerRef.current;
+        if (el && el.clientWidth > 0) {
+          setContainerWidth(el.clientWidth);
+        }
+      }, 100);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", handleFullscreenChange);
+    };
+  }, []);
+
+  // Compute scale to fit width based on page dimensions and current container width
+  const computeFitScale = useCallback(
+    async (doc: any, pageNum: number, targetWidth?: number) => {
+      if (!doc) return null;
+      try {
+        const page = await doc.getPage(pageNum);
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        const availableWidth = (targetWidth ?? containerWidth) - 48; // 24px padding on each side
+        if (availableWidth > 0 && unscaledViewport.width > 0) {
+          const rawScale = availableWidth / unscaledViewport.width;
+          return Math.max(0.4, Math.min(2.5, parseFloat(rawScale.toFixed(2))));
+        }
+      } catch (err) {
+        console.warn("Could not compute fit scale for page", pageNum, err);
+      }
+      return null;
+    },
+    [containerWidth]
+  );
+
+  // 2. Authenticated fetch of the PDF binary
   const loadPdfDocument = useCallback(async () => {
     if (!submissionId) return;
     setLoading(true);
@@ -51,7 +127,7 @@ export function ThesisBookReader({
     }
 
     try {
-      const endpoint = api.getViewUrl(submissionId, fileId);
+      const endpoint = api.getViewUrl(submissionId, fileId, userRole || undefined);
       const res = await fetch(endpoint, {
         credentials: "include",
       });
@@ -94,13 +170,30 @@ export function ThesisBookReader({
           ? "/pdf.worker.min.mjs"
           : `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
-      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
+      const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(buffer),
+        cMapUrl: "/cmaps/",
+        cMapPacked: true,
+        standardFontDataUrl: "/standard_fonts/",
+        wasmUrl: "/wasm/",
+      });
       const loadedDoc = await loadingTask.promise;
 
       setPdfDoc(loadedDoc);
       setNumPages(loadedDoc.numPages);
       setCurrentPage(1);
       setPageInput("1");
+
+      // Auto-fit initial scale to container width if container has measurable width
+      const initialTargetWidth =
+        scrollAreaRef.current?.clientWidth || containerRef.current?.clientWidth || containerWidth;
+      if (initialTargetWidth > 0) {
+        const fitScale = await computeFitScale(loadedDoc, 1, initialTargetWidth);
+        if (fitScale) {
+          setScale(fitScale);
+        }
+      }
+
       setLoading(false);
     } catch (err: unknown) {
       console.error("PDF loading error:", err);
@@ -111,7 +204,7 @@ export function ThesisBookReader({
       }
       setLoading(false);
     }
-  }, [submissionId, fileId]);
+  }, [submissionId, fileId, userRole, containerWidth, computeFitScale]);
 
   useEffect(() => {
     loadPdfDocument();
@@ -140,7 +233,18 @@ export function ThesisBookReader({
     };
   }, [pdfDoc]);
 
-  // 2. Render Page to Canvas with safe concurrency control
+  // Automatically adjust scale on container width change when in auto-fit mode
+  useEffect(() => {
+    if (autoFitWidth && pdfDoc && containerWidth > 0) {
+      computeFitScale(pdfDoc, currentPage, containerWidth).then((fitScale) => {
+        if (fitScale && Math.abs(fitScale - scale) > 0.04) {
+          setScale(fitScale);
+        }
+      });
+    }
+  }, [containerWidth, autoFitWidth, pdfDoc, currentPage, computeFitScale, scale]);
+
+  // 3. Render Page to Canvas with safe concurrency control and measurable dimensions
   const renderPage = useCallback(
     async (pageNum: number, currentScale: number) => {
       if (!pdfDoc || !canvasRef.current) return;
@@ -177,16 +281,35 @@ export function ThesisBookReader({
         const page = await pdfDoc.getPage(pageNum);
         if (mySeq !== renderSeqRef.current) return;
 
+        // Ensure container has measurable nonzero width before rendering
+        const targetContainer = scrollAreaRef.current || containerRef.current;
+        if (targetContainer && targetContainer.clientWidth <= 0) {
+          return;
+        }
+
+        const effectiveScale = currentScale > 0 ? currentScale : 1.0;
+        const viewport = page.getViewport({ scale: effectiveScale });
+
+        // Ensure calculated page viewport has measurable nonzero width and height
+        if (!viewport.width || !viewport.height || viewport.width <= 0 || viewport.height <= 0) {
+          console.warn("Invalid page dimensions for page", pageNum, viewport);
+          return;
+        }
+
+        const outputScale = window.devicePixelRatio || 1;
+        const pixelWidth = Math.floor(viewport.width * outputScale);
+        const pixelHeight = Math.floor(viewport.height * outputScale);
+
+        if (pixelWidth <= 0 || pixelHeight <= 0) return;
+
+        // Set explicit non-zero canvas dimensions
+        canvas.width = pixelWidth;
+        canvas.height = pixelHeight;
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+
         const context = canvas.getContext("2d");
         if (!context) return;
-
-        const viewport = page.getViewport({ scale: currentScale });
-        const outputScale = window.devicePixelRatio || 1;
-
-        canvas.width = Math.floor(viewport.width * outputScale);
-        canvas.height = Math.floor(viewport.height * outputScale);
-        canvas.style.width = Math.floor(viewport.width) + "px";
-        canvas.style.height = Math.floor(viewport.height) + "px";
 
         const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
 
@@ -251,7 +374,7 @@ export function ThesisBookReader({
     };
   }, [pdfDoc, currentPage, scale, renderPage, numPages]);
 
-  // 3. Navigation Handlers
+  // 4. Navigation Handlers
   const handlePrevPage = () => {
     if (currentPage > 1) {
       const nextP = currentPage - 1;
@@ -278,20 +401,31 @@ export function ThesisBookReader({
     }
   };
 
-  // 4. Zoom Handlers
-  const handleZoomIn = () => setScale((s) => Math.min(s + 0.25, 3.0));
-  const handleZoomOut = () => setScale((s) => Math.max(s - 0.25, 0.5));
-  const handleFitWidth = () => {
-    if (containerRef.current) {
-      const availableWidth = containerRef.current.clientWidth - 48;
-      // standard letter width ~ 612pt
-      const newScale = Math.max(0.6, availableWidth / 612);
-      setScale(parseFloat(newScale.toFixed(2)));
+  // 5. Zoom Handlers
+  const handleZoomIn = () => {
+    setAutoFitWidth(false);
+    setScale((s) => Math.min(parseFloat((s + 0.25).toFixed(2)), 3.0));
+  };
+
+  const handleZoomOut = () => {
+    setAutoFitWidth(false);
+    setScale((s) => Math.max(parseFloat((s - 0.25).toFixed(2)), 0.4));
+  };
+
+  const handleFitWidth = async () => {
+    setAutoFitWidth(true);
+    const fitScale = await computeFitScale(pdfDoc, currentPage);
+    if (fitScale) {
+      setScale(fitScale);
     }
   };
-  const handleResetZoom = () => setScale(1.2);
 
-  // 5. Fullscreen Toggle
+  const handleResetZoom = () => {
+    setAutoFitWidth(false);
+    setScale(1.0);
+  };
+
+  // 6. Fullscreen Toggle
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
@@ -301,12 +435,12 @@ export function ThesisBookReader({
     }
   };
 
-  // 6. Authenticated Download Handler
+  // 7. Authenticated Download Handler
   const handleDownloadPdf = async () => {
     if (!canDownload) return;
     setDownloading(true);
     try {
-      const downloadEndpoint = api.getDownloadUrl(submissionId, fileId);
+      const downloadEndpoint = api.getDownloadUrl(submissionId, fileId, userRole || undefined);
       const res = await fetch(downloadEndpoint, { credentials: "include" });
       if (!res.ok) {
         let msg = "Download failed. Institutional access denied.";
@@ -335,10 +469,9 @@ export function ThesisBookReader({
     }
   };
 
-  // 7. Keyboard Navigation (Arrow Keys)
+  // 8. Keyboard Navigation (Arrow Keys)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept if user is typing in input
       if (document.activeElement?.tagName === "INPUT") return;
       if (e.key === "ArrowLeft") handlePrevPage();
       if (e.key === "ArrowRight") handleNextPage();
@@ -437,8 +570,10 @@ export function ThesisBookReader({
               <button
                 type="button"
                 onClick={handleFitWidth}
-                title="Fit to Width"
-                className="hidden sm:inline-block hover:bg-[#3d3d3d] px-2 py-0.5 rounded text-[11px] text-[#bbb] hover:text-white transition cursor-pointer"
+                title="Fit to Container Width"
+                className={`hover:bg-[#3d3d3d] px-2 py-0.5 rounded text-[11px] transition cursor-pointer ${
+                  autoFitWidth ? "text-[#daa32f] font-bold" : "text-[#bbb] hover:text-white"
+                }`}
               >
                 Fit Width
               </button>
@@ -496,15 +631,18 @@ export function ThesisBookReader({
       </div>
 
       {/* --- Central Document Reading Area --- */}
-      <div className="flex-1 overflow-auto bg-[#1a1a1a] flex items-center justify-center p-4 md:p-8 min-h-[520px]">
+      <div
+        ref={scrollAreaRef}
+        className="flex-1 overflow-auto bg-[#1a1a1a] p-4 md:p-8 min-h-[520px] flex flex-col items-center justify-start"
+      >
         {loading ? (
-          <div className="flex flex-col items-center justify-center space-y-3 py-16 text-[#a3a3a3]">
+          <div className="m-auto flex flex-col items-center justify-center space-y-3 py-16 text-[#a3a3a3]">
             <div className="w-8 h-8 border-2 border-[#daa32f] border-t-transparent rounded-full animate-spin" />
             <p className="text-[13px] font-medium">Loading thesis document...</p>
             <p className="text-[11px] text-[#737373]">Authenticating secure stream from institutional repository</p>
           </div>
         ) : error ? (
-          <div className="max-w-md w-full bg-[#2a1b1b] border border-[#7f1d1d] p-6 rounded-[8px] text-center space-y-3 shadow-lg">
+          <div className="m-auto max-w-md w-full bg-[#2a1b1b] border border-[#7f1d1d] p-6 rounded-[8px] text-center space-y-3 shadow-lg">
             <div className="w-12 h-12 mx-auto rounded-full bg-[#7f1d1d]/30 flex items-center justify-center text-[#f87171]">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -523,9 +661,9 @@ export function ThesisBookReader({
             </div>
           </div>
         ) : (
-          <div className="relative flex flex-col items-center">
+          <div className="m-auto flex flex-col items-center min-w-fit">
             {/* Academic Paper Sheet Canvas */}
-            <div className="bg-white rounded-[2px] shadow-2xl ring-1 ring-black/20 overflow-hidden">
+            <div className="bg-white rounded-[2px] shadow-2xl ring-1 ring-black/20 overflow-hidden shrink-0">
               <canvas ref={canvasRef} className="block" />
             </div>
 

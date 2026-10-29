@@ -889,9 +889,20 @@ export const api = {
   },
 
   // Document URLs
-  getViewUrl: (submissionId: string, fileScanId?: string) =>
-    `/theses/${submissionId}/file/view`,
+  getViewUrl: (submissionId: string, fileScanId?: string, role?: string) => {
+    const params = new URLSearchParams();
+    if (fileScanId) params.set("fileId", fileScanId);
+    if (role) params.set("role", role);
+    const qs = params.toString();
+    return `/theses/${submissionId}/file/view${qs ? `?${qs}` : ""}`;
+  },
 
-  getDownloadUrl: (submissionId: string, fileScanId?: string) =>
-    `/theses/${submissionId}/file/download`,
+  getDownloadUrl: (submissionId: string, fileScanId?: string, role?: string) => {
+    const params = new URLSearchParams();
+    if (fileScanId) params.set("fileId", fileScanId);
+    if (role) params.set("role", role);
+    const qs = params.toString();
+    return `/theses/${submissionId}/file/download${qs ? `?${qs}` : ""}`;
+  },
 };
+

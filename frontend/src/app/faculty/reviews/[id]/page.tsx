@@ -245,7 +245,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
         {/* 2-Column Review Layout matching Figma 113:2713 */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Thesis Document Book Reader */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7 min-w-0 space-y-6">
             {submission && (
               <ThesisBookReader
                 submissionId={submission.id}
@@ -291,7 +291,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
           </div>
 
           {/* Right Column: Decision Form OR Institutional Tracking View */}
-          <div className="lg:col-span-5 space-y-6">
+          <div className="lg:col-span-5 min-w-0 space-y-6">
             {isActionable ? (
               <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
                 <div className="border-b border-[#f2f2f0] pb-2">

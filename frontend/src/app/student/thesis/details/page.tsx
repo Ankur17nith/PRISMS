@@ -133,7 +133,7 @@ function SubmissionDetailsContent() {
         {/* 2-column layout: Left = Stage timeline & remarks, Right = Embedded PDF viewer */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Timeline & Released Feedback */}
-          <div className="lg:col-span-5 space-y-6">
+          <div className="lg:col-span-5 min-w-0 space-y-6">
             {/* Timeline */}
             <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm space-y-4">
               <h3 className="font-bold text-[15px] text-[#171717] border-b border-[#f2f2f0] pb-2">
@@ -201,7 +201,7 @@ function SubmissionDetailsContent() {
           </div>
 
           {/* Right Column: Secure Document Viewer */}
-          <div className="lg:col-span-7 space-y-4">
+          <div className="lg:col-span-7 min-w-0 space-y-4">
             {submission && (
               <ThesisBookReader
                 submissionId={submission.id}
