@@ -9,6 +9,11 @@
     "start": "node dist/server.js",
     "seed": "tsx prisma/seed.ts",
     "test": "NODE_ENV=test tsx --test \"src/**/*.test.ts\"",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate:deploy": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:status": "prisma migrate status",
+    "prisma:studio": "prisma studio",
     "postinstall": "prisma skills sync || exit 0"
   },
   "keywords": [],
