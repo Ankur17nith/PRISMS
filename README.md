@@ -224,7 +224,7 @@ Student Draft ──► Upload PDF ──► Formal Submit ──► Stage 1: Su
 
 ## 7. Testing & Quality Assurance
 
-PRISMS features an automated integration and security test suite using Node.js native test runner and Supertest.
+PRISMS features an automated integration and security test suite using Node.js native test runner and Supertest against a dedicated, isolated test database (`prisms_test`).
 
 Run tests from `backend/`:
 ```bash
@@ -232,12 +232,14 @@ npm test
 ```
 
 ### Verified Test Results:
-- **41/41 passing tests** covering:
+- **44/44 passing tests (0 failures)** covering:
   - Student draft, PDF signature verification, file size limits, IDOR protection
   - Supervisor queue, HOD dynamic recipient resolution, forwarding
   - DDPC observer access and restriction enforcement
   - In-portal inline viewing vs download authorization
-  - **HOD download denial enforcement**
+  - **Strict HOD download denial enforcement (including multi-role contexts and `role=HOD` query parameter rejection)**
+  - Unauthorized and unassigned faculty inline viewing rejection (403)
+  - Safe 404 response on invalid or non-existent fileId
   - Parallel forwarding to both SDPC and Dean Academics
   - Return for revision with mandatory remarks, student feedback visibility
   - Multi-version resubmission (Version 1 -> Version 2)
@@ -262,7 +264,16 @@ For detailed test documentation and suite breakdown, see [`docs/TESTING.md`](fil
 
 ---
 
-## 9. Notes for Production Deployment
+## 9. Development & System Credits
+
+PRISMS was designed and engineered for the National Institute of Technology Hamirpur by:
+
+- **Ankur Gupta** · [Portfolio](https://ankur-portfolio-topaz.vercel.app/) · Department of Computer Science & Engineering
+- **Aditya Sharma** · [GitHub](https://github.com/itzzadi04) · Department of Computer Science & Engineering
+
+---
+
+## 10. Notes for Production Deployment
 
 1. **Storage Provider:** While local private filesystem storage is configured for development, production can bind `THESIS_STORAGE_PATH` to a persistent private volume (e.g. NFS / private EBS) or an S3-compatible private bucket adapter.
 2. **Reverse Proxy:** Terminate SSL/TLS at Nginx/Caddy and configure `client_max_body_size 25M` to accommodate the 20 MiB thesis limit.
