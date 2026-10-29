@@ -4,7 +4,7 @@ import { env } from "../../config/env.js";
 import { AppError } from "../../lib/errors.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { validate } from "../../middleware/validate.js";
-import { createSecureReadStream, savePrivateThesisPdf } from "../../lib/storage.js";
+import { createSecureReadStream, getSecureFileSize, savePrivateThesisPdf } from "../../lib/storage.js";
 import {
   draftMetadataSchema,
   forwardReviewSchema,
@@ -178,7 +178,7 @@ router.post(
 // Document Viewing & Download Endpoints
 // =============================================================================
 
-// Inline in-portal PDF viewer stream (authenticated, no public URLs)
+// Inline in-portal PDF viewer stream (authenticated, no public URLs, byte-range enabled)
 router.get("/:submissionId/file/view", requireAuth, async (req, res) => {
   const file = await service.authorizeDocumentAccess(
     uuidParam(req.params.submissionId, "submission"),
@@ -188,19 +188,58 @@ router.get("/:submissionId/file/view", requireAuth, async (req, res) => {
     req.query.fileId as string | undefined,
   );
 
+  const totalSize = getSecureFileSize(file.storageKey);
+
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `inline; filename="${file.originalFilename}"`);
   res.setHeader("Cache-Control", "private, no-store, must-revalidate");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Accept-Ranges", "bytes");
 
-  const stream = createSecureReadStream(file.storageKey);
-  stream.on("error", (err) => {
-    console.error("Stream error during inline viewing:", err);
-    if (!res.headersSent) {
-      res.status(500).json({ error: { message: "Failed to stream document", code: "STREAM_ERROR" } });
+  const rangeHeader = req.headers.range;
+  if (rangeHeader && rangeHeader.startsWith("bytes=")) {
+    const parts = rangeHeader.replace(/bytes=/, "").split("-");
+    const startStr = parts[0];
+    const endStr = parts[1];
+
+    let start = parseInt(startStr, 10);
+    let end = endStr ? parseInt(endStr, 10) : totalSize - 1;
+
+    if (isNaN(start)) {
+      start = totalSize - parseInt(endStr, 10);
+      end = totalSize - 1;
     }
-  });
-  stream.pipe(res);
+
+    if (start >= totalSize || end >= totalSize || start > end || start < 0) {
+      res.setHeader("Content-Range", `bytes */${totalSize}`);
+      res.status(416).end();
+      return;
+    }
+
+    const chunkSize = end - start + 1;
+    res.status(206);
+    res.setHeader("Content-Range", `bytes ${start}-${end}/${totalSize}`);
+    res.setHeader("Content-Length", chunkSize.toString());
+
+    const stream = createSecureReadStream(file.storageKey, { start, end });
+    stream.on("error", (err) => {
+      console.error("Stream error during range viewing:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: { message: "Failed to stream document", code: "STREAM_ERROR" } });
+      }
+    });
+    stream.pipe(res);
+  } else {
+    res.setHeader("Content-Length", totalSize.toString());
+    const stream = createSecureReadStream(file.storageKey);
+    stream.on("error", (err) => {
+      console.error("Stream error during inline viewing:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: { message: "Failed to stream document", code: "STREAM_ERROR" } });
+      }
+    });
+    stream.pipe(res);
+  }
 });
 
 // Dedicated document download (HOD strictly prohibited!)
@@ -213,10 +252,14 @@ router.get("/:submissionId/file/download", requireAuth, async (req, res) => {
     req.query.fileId as string | undefined,
   );
 
+  const totalSize = getSecureFileSize(file.storageKey);
+
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader("Content-Disposition", `attachment; filename="${file.originalFilename}"`);
   res.setHeader("Cache-Control", "private, no-store, must-revalidate");
   res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Length", totalSize.toString());
+  res.setHeader("Accept-Ranges", "bytes");
 
   const stream = createSecureReadStream(file.storageKey);
   stream.on("error", (err) => {

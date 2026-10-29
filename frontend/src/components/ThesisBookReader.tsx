@@ -89,7 +89,10 @@ export function ThesisBookReader({
 
       // Dynamically load pdfjs-dist on client side
       const pdfjsLib = await import("pdfjs-dist");
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        typeof window !== "undefined"
+          ? "/pdf.worker.min.mjs"
+          : `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
       const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(buffer) });
       const loadedDoc = await loadingTask.promise;
@@ -186,6 +189,8 @@ export function ThesisBookReader({
         canvas.style.height = Math.floor(viewport.height) + "px";
 
         const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
+
+        context.clearRect(0, 0, canvas.width, canvas.height);
 
         const renderContext = {
           canvasContext: context,
