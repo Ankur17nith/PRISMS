@@ -20,6 +20,9 @@ export function ThesisBookReader({
 }: ThesisBookReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const renderTaskRef = useRef<any>(null);
+  const renderPromiseRef = useRef<Promise<void> | null>(null);
+  const renderSeqRef = useRef<number>(0);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,6 +40,15 @@ export function ThesisBookReader({
     if (!submissionId) return;
     setLoading(true);
     setError(null);
+
+    // Cancel any active render before loading a new document
+    renderSeqRef.current++;
+    if (renderTaskRef.current) {
+      try {
+        renderTaskRef.current.cancel();
+      } catch {}
+      renderTaskRef.current = null;
+    }
 
     try {
       const endpoint = api.getViewUrl(submissionId, fileId);
@@ -89,7 +101,6 @@ export function ThesisBookReader({
       setLoading(false);
     } catch (err: unknown) {
       console.error("PDF loading error:", err);
-      // If pdfjs fails, but we have a blob URL, we can still fall back cleanly
       if (err instanceof Error) {
         setError(`Failed to render PDF: ${err.message}`);
       } else {
@@ -102,20 +113,67 @@ export function ThesisBookReader({
   useEffect(() => {
     loadPdfDocument();
     return () => {
+      renderSeqRef.current++;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+        renderTaskRef.current = null;
+      }
       if (blobUrl) {
         URL.revokeObjectURL(blobUrl);
       }
     };
-  }, [submissionId, fileId]);
+  }, [loadPdfDocument]);
 
-  // 2. Render Page to Canvas
+  // Clean up PDF document on unmount
+  useEffect(() => {
+    return () => {
+      if (pdfDoc) {
+        try {
+          pdfDoc.destroy();
+        } catch {}
+      }
+    };
+  }, [pdfDoc]);
+
+  // 2. Render Page to Canvas with safe concurrency control
   const renderPage = useCallback(
     async (pageNum: number, currentScale: number) => {
       if (!pdfDoc || !canvasRef.current) return;
 
+      const mySeq = ++renderSeqRef.current;
+
+      // Cancel previous render task if active
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {
+          // ignore cancellation
+        }
+      }
+
+      // Wait for previous render to finish/settle before starting another on this canvas
+      if (renderPromiseRef.current) {
+        try {
+          await renderPromiseRef.current;
+        } catch {
+          // ignore prior cancellation error
+        }
+      }
+
+      // If a newer render request came in while waiting, bail out
+      if (mySeq !== renderSeqRef.current) {
+        return;
+      }
+
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
       try {
         const page = await pdfDoc.getPage(pageNum);
-        const canvas = canvasRef.current;
+        if (mySeq !== renderSeqRef.current) return;
+
         const context = canvas.getContext("2d");
         if (!context) return;
 
@@ -135,9 +193,39 @@ export function ThesisBookReader({
           viewport,
         };
 
-        await page.render(renderContext).promise;
-      } catch (renderErr) {
-        console.error("Canvas render error on page", pageNum, renderErr);
+        const task = page.render(renderContext);
+        renderTaskRef.current = task;
+
+        const promise = (async () => {
+          try {
+            await task.promise;
+          } catch (renderErr: any) {
+            const isCancelled =
+              renderErr?.name === "RenderingCancelledException" ||
+              renderErr?.message?.toLowerCase().includes("cancelled") ||
+              renderErr?.message?.toLowerCase().includes("canceled");
+
+            if (!isCancelled) {
+              console.error("Canvas render error on page", pageNum, renderErr);
+              setError(`Render error on page ${pageNum}: ${renderErr.message || renderErr}`);
+            }
+          } finally {
+            if (renderTaskRef.current === task) {
+              renderTaskRef.current = null;
+            }
+          }
+        })();
+
+        renderPromiseRef.current = promise;
+        await promise;
+      } catch (renderErr: any) {
+        const isCancelled =
+          renderErr?.name === "RenderingCancelledException" ||
+          renderErr?.message?.toLowerCase().includes("cancelled") ||
+          renderErr?.message?.toLowerCase().includes("canceled");
+        if (!isCancelled && mySeq === renderSeqRef.current) {
+          console.error("Canvas render error on page", pageNum, renderErr);
+        }
       }
     },
     [pdfDoc]
@@ -147,6 +235,15 @@ export function ThesisBookReader({
     if (pdfDoc && numPages > 0) {
       renderPage(currentPage, scale);
     }
+    return () => {
+      renderSeqRef.current++;
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+        renderTaskRef.current = null;
+      }
+    };
   }, [pdfDoc, currentPage, scale, renderPage, numPages]);
 
   // 3. Navigation Handlers
