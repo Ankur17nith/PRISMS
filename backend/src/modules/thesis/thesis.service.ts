@@ -2,6 +2,7 @@ import type { Request } from "express";
 import { prisma } from "../../lib/prisma.js";
 import { AppError } from "../../lib/errors.js";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import { audit } from "../../lib/audit.js";
 import { fileExists, getSecureFilePath, ValidatedPdf } from "../../lib/storage.js";
 import type { AuthContext } from "../../middleware/auth.js";
@@ -180,13 +181,14 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
         status: "IN_PROGRESS",
       },
     });
-  } else if (input.workingTitle || input.abstract || input.researchArea) {
+  } else {
     thesis = await prisma.thesis.update({
       where: { id: thesis.id },
       data: {
         workingTitle: title,
         abstract: input.abstract !== undefined ? input.abstract : thesis.abstract,
         researchArea: input.researchArea !== undefined ? input.researchArea : thesis.researchArea,
+        status: "IN_PROGRESS",
       },
     });
   }
@@ -244,12 +246,15 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
       },
     });
 
-    // 2. Link file with accurate byte size
+    // 2. Link file with accurate byte size and sha256 checksum
     let fileSizeBytes = BigInt(0);
+    let sha256Checksum: string | null = null;
     try {
       const filePath = getSecureFilePath(input.storageKey!);
       if (fs.existsSync(filePath)) {
-        fileSizeBytes = BigInt(fs.statSync(filePath).size);
+        const fileBuf = fs.readFileSync(filePath);
+        fileSizeBytes = BigInt(fileBuf.length);
+        sha256Checksum = createHash("sha256").update(fileBuf).digest("hex");
       }
     } catch {
       // fallback
@@ -263,6 +268,7 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
         storageKey: input.storageKey!,
         mimeType: "application/pdf",
         fileSizeBytes,
+        sha256Checksum,
         scanStatus: "CLEAN",
         isPrimary: true,
       },
@@ -363,12 +369,15 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
       },
     });
 
-    // 2. Link newly uploaded revised file with accurate byte size
+    // 2. Link newly uploaded revised file with accurate byte size and sha256 checksum
     let resubmitFileSizeBytes = BigInt(0);
+    let resubmitSha256: string | null = null;
     try {
       const filePath = getSecureFilePath(input.storageKey);
       if (fs.existsSync(filePath)) {
-        resubmitFileSizeBytes = BigInt(fs.statSync(filePath).size);
+        const fileBuf = fs.readFileSync(filePath);
+        resubmitFileSizeBytes = BigInt(fileBuf.length);
+        resubmitSha256 = createHash("sha256").update(fileBuf).digest("hex");
       }
     } catch {
       // fallback
@@ -382,9 +391,15 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
         storageKey: input.storageKey,
         mimeType: "application/pdf",
         fileSizeBytes: resubmitFileSizeBytes,
+        sha256Checksum: resubmitSha256,
         scanStatus: "CLEAN",
         isPrimary: true,
       },
+    });
+
+    await tx.thesis.update({
+      where: { id: thesis.id },
+      data: { status: "IN_PROGRESS" },
     });
 
     // 3. Create Stage 1 again for Supervisor review
@@ -713,7 +728,7 @@ export async function authorizeDocumentAccess(
     where: { id: submissionId },
     include: {
       thesis: { include: { student: true } },
-      files: true,
+      files: { orderBy: { uploadedAt: "desc" } },
       stages: { include: { definition: true, assignments: true } },
     },
   });
@@ -728,6 +743,21 @@ export async function authorizeDocumentAccess(
 
   if (!targetFile) {
     throw new AppError(404, "No matching thesis file associated with this submission", "FILE_NOT_FOUND");
+  }
+
+  // Ensure file physically exists in private storage
+  if (!fileExists(targetFile.storageKey)) {
+    throw new AppError(404, "Thesis PDF document not found in secure institutional storage", "FILE_NOT_FOUND");
+  }
+
+  // Validate PDF magic bytes on disk
+  const filePath = getSecureFilePath(targetFile.storageKey);
+  const headBuf = Buffer.alloc(5);
+  const fd = fs.openSync(filePath, "r");
+  fs.readSync(fd, headBuf, 0, 5, 0);
+  fs.closeSync(fd);
+  if (!headBuf.toString("utf-8").startsWith("%PDF-")) {
+    throw new AppError(400, "Corrupted thesis file: invalid PDF signature", "INVALID_FILE_SIGNATURE");
   }
 
   const studentDeptId = submission.thesis.student.departmentId;
