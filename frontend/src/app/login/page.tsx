@@ -241,8 +241,21 @@ export default function LoginPage() {
       </main>
 
       {/* Footer */}
-      <footer className="text-center text-[12px] text-[#737373] py-4 border-t border-[#e2e2df] bg-white">
-        National Institute of Technology Hamirpur · PRISMS Doctoral Portal · Default password: <code className="bg-[#f2f2f0] px-1 py-0.5 rounded font-mono text-[11px]">ChangeMe-Dev-123</code>
+      <footer className="text-center text-[12px] text-[#737373] py-4 border-t border-[#e2e2df] bg-white flex flex-col sm:flex-row items-center justify-between px-6 gap-2">
+        <div>
+          National Institute of Technology Hamirpur · PRISMS Doctoral Portal · Default password: <code className="bg-[#f2f2f0] px-1 py-0.5 rounded font-mono text-[11px]">ChangeMe-Dev-123</code>
+        </div>
+        <div className="flex items-center gap-3 text-[11.5px]">
+          <span>Developer: <strong className="text-[#171717]">Ankur Gupta</strong> (CSE, NIT Hamirpur)</span>
+          <a
+            href="https://github.com"
+            target="_blank"
+            rel="noreferrer"
+            className="font-bold text-[#171717] bg-[#f2f2f0] hover:bg-[#e2e2df] px-2 py-0.5 rounded transition"
+          >
+            Source code ↗
+          </a>
+        </div>
       </footer>
     </div>
   );

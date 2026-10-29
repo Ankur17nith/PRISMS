@@ -19,8 +19,11 @@ export default function FacultyDashboardPage() {
           api.getReviewQueue(activeRole || undefined).catch(() => []),
           api.getMyScholars().catch(() => []),
         ]);
-        setQueue(q);
-        setScholars(s);
+        setQueue(Array.isArray(q) ? q : []);
+        setScholars(Array.isArray(s) ? s : []);
+      } catch {
+        setQueue([]);
+        setScholars([]);
       } finally {
         setLoading(false);
       }
@@ -43,14 +46,14 @@ export default function FacultyDashboardPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm">
             <span className="text-[12px] font-bold text-[#666] uppercase">Pending Reviews</span>
-            <p className="text-[28px] font-bold text-[#171717] mt-1">{queue.length}</p>
+            <p className="text-[28px] font-bold text-[#171717] mt-1">{(Array.isArray(queue) ? queue : []).length}</p>
             <p className="text-[11.5px] text-[#8a570d] font-semibold mt-0.5">Tasks requiring decision</p>
           </div>
 
           <div className="bg-white border border-[#e2e2df] rounded-[8px] p-5 shadow-sm">
             <span className="text-[12px] font-bold text-[#666] uppercase">Active Scholars</span>
             <p className="text-[28px] font-bold text-[#171717] mt-1">
-              {scholars.filter((s) => s.admissionStatus === "ACTIVE").length}
+              {(Array.isArray(scholars) ? scholars : []).filter((s) => s.admissionStatus === "ACTIVE" || s.admissionStatus === "CONFIRMED").length}
             </p>
             <p className="text-[11.5px] text-[#166534] font-semibold mt-0.5">Under your supervision</p>
           </div>
@@ -91,7 +94,7 @@ export default function FacultyDashboardPage() {
 
           {loading ? (
             <p className="text-[#666] text-[13px] py-4 text-center">Loading review tasks...</p>
-          ) : queue.length === 0 ? (
+          ) : (Array.isArray(queue) ? queue : []).length === 0 ? (
             <div className="p-8 text-center bg-[#fafaf9] rounded border border-dashed border-[#e2e2df]">
               <p className="text-[13.5px] text-[#666]">No pending review tasks in your queue.</p>
             </div>
@@ -108,7 +111,7 @@ export default function FacultyDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f2f2f0]">
-                  {queue.slice(0, 5).map((q) => (
+                  {(Array.isArray(queue) ? queue : []).slice(0, 5).map((q) => (
                     <tr key={q.assignmentId} className="hover:bg-[#fafaf9]">
                       <td className="py-3 px-3 font-mono font-bold text-[#171717]">
                         {q.submission.submissionReference} (v{q.submission.currentVersion})

@@ -53,7 +53,7 @@ export default function FacultyReviewsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f2f2f0]">
-                {reviews.map((r) => (
+                {(Array.isArray(reviews) ? reviews : []).map((r) => (
                   <tr key={r.assignmentId} className="hover:bg-[#fafaf9]">
                     <td className="py-3 px-4 font-mono font-bold text-[#171717]">
                       {r.submission.submissionReference} (v{r.submission.currentVersion})

@@ -22,8 +22,15 @@ export default function StudentDashboardPage() {
           api.getMySubmissions().catch(() => []),
           api.getDraft().catch(() => null),
         ]);
-        setSubmissions(subs);
-        setDraftData(draft);
+        setSubmissions(Array.isArray(subs) ? subs : []);
+        setDraftData(
+          draft
+            ? {
+                supervisor: draft.supervisor ? { id: draft.supervisor.id || "fac-1", fullName: draft.supervisor.fullName, designation: draft.supervisor.designation } : null,
+                draft: draft.draft ? { title: draft.draft.title, abstract: draft.draft.abstract, keywords: draft.draft.keywords } : null,
+              }
+            : null
+        );
       } finally {
         setLoading(false);
       }

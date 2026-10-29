@@ -13,13 +13,17 @@ export default function StudentSubmissionHistoryPage() {
     async function load() {
       try {
         const list = await api.getMySubmissions();
-        setSubmissions(list);
+        setSubmissions(Array.isArray(list) ? list : []);
+      } catch {
+        setSubmissions([]);
       } finally {
         setLoading(false);
       }
     }
     load();
   }, []);
+
+  const submissionList = Array.isArray(submissions) ? submissions : [];
 
   return (
     <ApplicationShell portalType="student" breadcrumb="Student portal / Submission History">
@@ -33,7 +37,7 @@ export default function StudentSubmissionHistoryPage() {
 
         {loading ? (
           <div className="p-8 text-center text-[#666]">Loading submission history...</div>
-        ) : submissions.length === 0 ? (
+        ) : submissionList.length === 0 ? (
           <div className="bg-white border border-[#e2e2df] rounded-[8px] p-8 text-center shadow-sm">
             <p className="text-[14px] text-[#666] mb-3">No submission history found.</p>
             <Link
@@ -57,7 +61,7 @@ export default function StudentSubmissionHistoryPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#f2f2f0]">
-                {submissions.map((sub) => (
+                {submissionList.map((sub) => (
                   <tr key={sub.id} className="hover:bg-[#fafaf9]">
                     <td className="py-3 px-4 font-bold text-[#171717]">v{sub.currentVersion}</td>
                     <td className="py-3 px-4 font-mono text-[12px] text-[#171717]">{sub.submissionReference}</td>

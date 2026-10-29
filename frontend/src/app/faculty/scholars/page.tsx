@@ -23,7 +23,9 @@ export default function FacultyScholarsPage() {
     load();
   }, []);
 
-  const filtered = scholars.filter((s) => {
+  const scholarList = Array.isArray(scholars) ? scholars : [];
+
+  const filtered = scholarList.filter((s) => {
     const matchesFilter =
       filter === "ALL"
         ? true
@@ -53,19 +55,19 @@ export default function FacultyScholarsPage() {
                 onClick={() => setFilter("ALL")}
                 className={`px-3 py-1 rounded-[4px] ${filter === "ALL" ? "bg-white text-[#171717] shadow-sm" : "text-[#666]"}`}
               >
-                All ({scholars.length})
+                All ({scholarList.length})
               </button>
               <button
                 onClick={() => setFilter("ACTIVE")}
                 className={`px-3 py-1 rounded-[4px] ${filter === "ACTIVE" ? "bg-white text-[#171717] shadow-sm" : "text-[#666]"}`}
               >
-                Active ({scholars.filter((s) => s.admissionStatus === "ACTIVE").length})
+                Active ({scholarList.filter((s) => s.admissionStatus === "ACTIVE").length})
               </button>
               <button
                 onClick={() => setFilter("COMPLETED")}
                 className={`px-3 py-1 rounded-[4px] ${filter === "COMPLETED" ? "bg-white text-[#171717] shadow-sm" : "text-[#666]"}`}
               >
-                Completed ({scholars.filter((s) => s.admissionStatus === "COMPLETED").length})
+                Completed ({scholarList.filter((s) => s.admissionStatus === "COMPLETED").length})
               </button>
             </div>
 

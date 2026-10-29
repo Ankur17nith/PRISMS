@@ -98,16 +98,16 @@ export function ApplicationShell({ portalType, breadcrumb, children }: Applicati
           <Link href="/" className="hover:underline font-semibold">
             Home
           </Link>
-          <Link href="/about" className="hover:underline">
+          <Link href="/?tab=about" className="hover:underline">
             About PRISMS
           </Link>
-          <Link href="/workflow" className="hover:underline">
+          <Link href="/?tab=workflow" className="hover:underline">
             Research Workflow
           </Link>
-          <Link href="/guidelines" className="hover:underline">
+          <Link href="/?tab=guidelines" className="hover:underline">
             Guidelines
           </Link>
-          <Link href="/contact" className="hover:underline">
+          <Link href="/?tab=contact" className="hover:underline">
             Contact Us
           </Link>
         </div>
@@ -287,45 +287,94 @@ export function ApplicationShell({ portalType, breadcrumb, children }: Applicati
         </main>
       </div>
 
-      {/* 4. Institutional Footer */}
-      <footer className="bg-[#171717] text-[#a3a3a3] border-t border-[#303030] px-6 md:px-16 py-8 text-[12.5px] font-arimo">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 pb-6 border-b border-[#303030]">
-          <div>
-            <h4 className="font-bold text-white text-[14px] mb-2">PRISMS</h4>
-            <p className="leading-relaxed">
-              PhD Research & Institutional Scholars Management System supports the academic journey of doctoral scholars
-              at NIT Hamirpur by organizing milestones, thesis submissions, and reviews in one unified platform.
-            </p>
+      {/* 4. Institutional Footer (Figma 23:1462 Exact Match) */}
+      <footer className="bg-white border-t border-[#e2e2df] text-[#303030] text-[12.5px] font-arimo">
+        <div className="max-w-7xl mx-auto px-6 py-10">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+            {/* Column 1: About PRISMS */}
+            <div className="space-y-3">
+              <h4 className="font-bold text-[14px] text-[#171717]">About PRISMS</h4>
+              <p className="text-[#666] leading-relaxed text-[12px]">
+                PhD Research & Institutional Scholars Management System (PRISMS) coordinates doctoral admissions,
+                supervision milestones, coursework verification, and statutory thesis evaluations at National Institute of Technology Hamirpur.
+              </p>
+            </div>
+
+            {/* Column 2: Quick Links */}
+            <div className="space-y-3">
+              <h4 className="font-bold text-[14px] text-[#171717]">Quick Links</h4>
+              <ul className="space-y-1.5 text-[12px] text-[#666]">
+                <li>
+                  <Link href="/" className="hover:text-[#171717] hover:underline">
+                    Portal Home
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/?tab=about" className="hover:text-[#171717] hover:underline">
+                    About PRISMS
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/?tab=workflow" className="hover:text-[#171717] hover:underline">
+                    Research Workflow
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/?tab=guidelines" className="hover:text-[#171717] hover:underline">
+                    Guidelines
+                  </Link>
+                </li>
+              </ul>
+            </div>
+
+            {/* Column 3: Developers (Figma 23:1475) */}
+            <div className="space-y-3">
+              <h4 className="font-bold text-[14px] text-[#171717]">Developers</h4>
+              <div className="space-y-1 text-[12px] text-[#666]">
+                <p className="font-bold text-[#171717]">Ankur Gupta</p>
+                <p>Department of Computer Science & Engineering</p>
+                <p>National Institute of Technology Hamirpur</p>
+              </div>
+              <div className="pt-1.5">
+                <a
+                  href="https://github.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-[#171717] bg-[#f2f2f0] hover:bg-[#e2e2df] px-2.5 py-1 rounded transition"
+                >
+                  <span>Source code</span>
+                  <span>↗</span>
+                </a>
+              </div>
+            </div>
+
+            {/* Column 4: Contact Us */}
+            <div className="space-y-3">
+              <h4 className="font-bold text-[14px] text-[#171717]">Contact Us</h4>
+              <div className="space-y-1.5 text-[#666] text-[12px]">
+                <p className="leading-snug">
+                  📍 National Institute of Technology Hamirpur<br />
+                  Himachal Pradesh, India · 177005
+                </p>
+                <p>
+                  ✉️ <a href="mailto:prisms-support@nith.ac.in" className="hover:underline text-[#171717]">prisms-support@nith.ac.in</a>
+                </p>
+                <p>
+                  📞 Office of Dean (Academic): +91-1972-254011
+                </p>
+              </div>
+            </div>
           </div>
-          <div>
-            <h4 className="font-bold text-white text-[14px] mb-2">Quick Links</h4>
-            <ul className="space-y-1.5 leading-relaxed">
-              <li>
-                <Link href="/" className="hover:underline text-white">Home</Link>
-              </li>
-              <li>
-                <Link href="/about" className="hover:underline text-white">About PRISMS</Link>
-              </li>
-              <li>
-                <Link href="/workflow" className="hover:underline text-white">Research Workflow</Link>
-              </li>
-              <li>
-                <Link href="/guidelines" className="hover:underline text-white">Guidelines</Link>
-              </li>
-            </ul>
+
+          {/* Copyright Strip */}
+          <div className="border-t border-[#f2f2f0] pt-4 flex flex-col sm:flex-row items-center justify-between text-[11px] text-[#737373] gap-2">
+            <div>
+              © 2026 National Institute of Technology Hamirpur. All rights reserved.
+            </div>
+            <div>
+              PRISMS Academic Release · Designed from NIT Hamirpur Design System
+            </div>
           </div>
-          <div>
-            <h4 className="font-bold text-white text-[14px] mb-2">Institutional Support</h4>
-            <p className="leading-relaxed">
-              Office of Dean (Academic) & SDPC<br />
-              National Institute of Technology Hamirpur<br />
-              Hamirpur, Himachal Pradesh — 177005, India
-            </p>
-          </div>
-        </div>
-        <div className="max-w-7xl mx-auto pt-4 flex flex-col sm:flex-row items-center justify-between text-[11px] text-[#737373]">
-          <span>© 2026 National Institute of Technology Hamirpur. All rights reserved.</span>
-          <span>PRISMS Academic Release · Designed from NIT Hamirpur Design System</span>
         </div>
       </footer>
     </div>

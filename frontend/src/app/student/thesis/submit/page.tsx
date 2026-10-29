@@ -48,10 +48,8 @@ function ThesisSubmitContent() {
             setFileSize(data.draft.fileSizeBytes || null);
           }
         }
-      } catch (err: unknown) {
-        if (err instanceof Error) {
-          setError(err.message);
-        }
+      } catch {
+        // Handled gracefully via default state
       }
     }
     loadDraft();

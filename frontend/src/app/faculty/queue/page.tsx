@@ -24,7 +24,7 @@ export default function FacultyQueuePage() {
     load();
   }, [activeRole]);
 
-  const filtered = queue.filter(
+  const filtered = (Array.isArray(queue) ? queue : []).filter(
     (item) =>
       item.submission.title.toLowerCase().includes(search.toLowerCase()) ||
       item.submission.student.user.fullName.toLowerCase().includes(search.toLowerCase()) ||
