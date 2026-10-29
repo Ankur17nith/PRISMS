@@ -350,9 +350,31 @@ export async function getMe(userId: string) {
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
     select: {
-      id: true, collegeEmail: true, fullName: true, accountStatus: true, mustChangePassword: true,
-      studentProfile: { select: { id: true, rollNumber: true } },
-      facultyProfile: { select: { id: true, designation: true } },
+      id: true,
+      collegeEmail: true,
+      fullName: true,
+      phone: true,
+      accountStatus: true,
+      mustChangePassword: true,
+      studentProfile: {
+        select: {
+          id: true,
+          rollNumber: true,
+          program: true,
+          admissionStatus: true,
+          departmentId: true,
+          department: { select: { id: true, code: true, name: true } },
+        },
+      },
+      facultyProfile: {
+        select: {
+          id: true,
+          employeeNumber: true,
+          designation: true,
+          departmentId: true,
+          department: { select: { id: true, code: true, name: true } },
+        },
+      },
     },
   });
   return { ...user, roles: await getActiveRoles(userId) };
