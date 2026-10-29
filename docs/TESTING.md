@@ -25,10 +25,11 @@ PRISMS uses Node.js v22's native test runner (`node:test`, `node:assert/strict`)
 ### 2.2 Environment Variables for Testing
 Ensure `backend/.env` contains the dedicated test database configuration:
 ```ini
-DATABASE_URL="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms?schema=public&host=/tmp"
-DATABASE_URL_TEST="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms_test?schema=public&host=/tmp"
-JWT_ACCESS_SECRET="prisms-development-jwt-access-secret-32-chars-minimum-key"
-JWT_REFRESH_SECRET="prisms-development-jwt-refresh-secret-32-chars-minimum-key"
+DATABASE_URL="postgresql://prisms_app:<db_password>@localhost:5433/prisms?schema=public&host=/tmp"
+DATABASE_URL_TEST="postgresql://prisms_app:<db_password>@localhost:5433/prisms_test?schema=public&host=/tmp"
+JWT_ACCESS_SECRET="your-32-character-secret-key-for-access-jwt-token"
+ACCESS_TOKEN_TTL_MINUTES=15
+REFRESH_TOKEN_TTL_DAYS=7
 MAX_THESIS_FILE_SIZE_BYTES=20971520
 THESIS_STORAGE_PATH="./storage/theses"
 NODE_ENV="development"
@@ -42,8 +43,8 @@ Before running tests, ensure the test database is provisioned, migrated, and see
 ```bash
 # Provision prisms_test and deploy migrations
 createdb -h 127.0.0.1 -p 5433 -U prisms_app prisms_test
-DATABASE_URL="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms_test?schema=public&host=/tmp" npx prisma migrate deploy
-DATABASE_URL="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms_test?schema=public&host=/tmp" npm run seed
+DATABASE_URL="postgresql://prisms_app:<db_password>@localhost:5433/prisms_test?schema=public&host=/tmp" npx prisma migrate deploy
+DATABASE_URL="postgresql://prisms_app:<db_password>@localhost:5433/prisms_test?schema=public&host=/tmp" npm run seed
 ```
 
 ---

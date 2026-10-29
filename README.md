@@ -118,14 +118,16 @@ PRISMS/
 2. **Configure Environment:**
    Create `backend/.env` (referencing `backend/.env.example`):
    ```ini
-   PORT=5000
+   PORT=4000
    FRONTEND_URL="http://localhost:3000"
-   DATABASE_URL="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms?schema=public&host=/tmp"
-   DATABASE_URL_TEST="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms_test?schema=public&host=/tmp"
-   JWT_ACCESS_SECRET="prisms-development-jwt-access-secret-32-chars-minimum-key"
-   JWT_REFRESH_SECRET="prisms-development-jwt-refresh-secret-32-chars-minimum-key"
+   DATABASE_URL="postgresql://prisms_app:<db_password>@localhost:5433/prisms?schema=public&host=/tmp"
+   DATABASE_URL_TEST="postgresql://prisms_app:<db_password>@localhost:5433/prisms_test?schema=public&host=/tmp"
+   JWT_ACCESS_SECRET="<replace-with-a-secure-random-32-char-secret>"
+   ACCESS_TOKEN_TTL_MINUTES=15
+   REFRESH_TOKEN_TTL_DAYS=7
    MAX_THESIS_FILE_SIZE_BYTES=20971520
    THESIS_STORAGE_PATH="./storage/theses"
+   ALLOWED_EMAIL_DOMAIN="nith.ac.in"
    NODE_ENV="development"
    ```
 
@@ -138,12 +140,41 @@ PRISMS/
 
 4. **Start Development Servers:**
    ```bash
-   # Terminal 1: Backend API (http://localhost:5000)
+   # Terminal 1: Backend API (http://localhost:4000)
    npm --prefix backend run dev
 
    # Terminal 2: Frontend (http://localhost:3000)
    npm --prefix frontend run dev
    ```
+
+### 4.3 Environment Variables Reference
+
+| Variable Name | Purpose / Description | Required | Default / Safe Example |
+|:---|:---|:---|:---|
+| `PORT` | HTTP port on which the Express backend listens. | Optional | `4000` |
+| `FRONTEND_URL` | Base URL of the Next.js frontend for CORS headers and cookie credentials. | Optional | `http://localhost:3000` |
+| `DATABASE_URL` | PostgreSQL connection string including credentials, port, and database name. | **Required** | `postgresql://prisms_app:<db_password>@localhost:5433/prisms?schema=public` |
+| `DATABASE_URL_TEST` | PostgreSQL connection string for dedicated test database (`prisms_test`). | **Required for tests** | `postgresql://prisms_app:<db_password>@localhost:5433/prisms_test?schema=public` |
+| `JWT_ACCESS_SECRET` | Cryptographic secret for signing and verifying HMAC-SHA256 JWT access tokens (min 32 chars). | **Required** | `<min-32-char-cryptographic-random-secret>` |
+| `ACCESS_TOKEN_TTL_MINUTES` | Lifetime of short-lived stateless JWT access tokens in minutes. | Optional | `15` |
+| `REFRESH_TOKEN_TTL_DAYS` | Validity period of rotating session refresh tokens in days. | Optional | `7` |
+| `MAX_THESIS_FILE_SIZE_BYTES` | Maximum allowable PDF upload size in bytes (enforced in Multer and file scanner). | Optional | `20971520` (20 MiB) |
+| `THESIS_STORAGE_PATH` | Host filesystem directory path for storing dissertation PDF files outside the web root. | Optional | `./storage/theses` |
+| `ALLOWED_EMAIL_DOMAIN` | Institutional email domain filter for scholar self-registration. | Optional | `nith.ac.in` (allows all in dev when unset) |
+| `SMTP_HOST` | Hostname of institutional SMTP relay server. | Optional | Unset (logs email notifications to console in dev) |
+| `SMTP_PORT` | Port for SMTP relay server connection. | Optional | `2525` |
+| `SMTP_USER` | Username for SMTP server authentication. | Optional | Unset |
+| `SMTP_PASS` | Password for SMTP server authentication. | Optional | Unset |
+| `MAIL_FROM` | RFC 5322 display name and address for system email notifications. | Optional | `PRISMS <no-reply@prisms.local>` |
+| `NODE_ENV` | Application runtime environment (`development`, `test`, `production`). | Optional | `development` |
+
+> [!NOTE]
+> **Refresh Token Architecture:**
+> PRISMS intentionally does not utilize a `JWT_REFRESH_SECRET`. Instead of stateless JWTs, refresh tokens are generated as 32-byte cryptographically secure random values (`crypto.randomBytes(32).toString('hex')`). Only the SHA-256 digest of the token is persisted in the PostgreSQL `sessions` table alongside expiration timestamps, user-agent details, and client IP metadata. This architecture guarantees immediate server-side revocation on logout, role changes, or session rotation.
+
+> [!IMPORTANT]
+> **Security Notice & Git History Advisory:**
+> Removing credentials, passwords, and secrets from tracked documentation and sample files only sanitizes current and future revisions; it does not expunge them from prior Git commit history. If sensitive production secrets or database credentials were committed previously, they must be treated as compromised and rotated immediately within your database server, identity provider, and hosting infrastructure. Never track active `.env` or `.env.local` files in version control.
 
 ---
 
@@ -172,23 +203,24 @@ npm --prefix backend test
 ```
 
 ### Verified Test Results:
-- **70/70 passing tests (0 failures)** across 17 suites:
+- **75/75 passing tests (0 failures)** across 18 suites:
   - Role Normalization: Deduplication of role aliases (`SDPC`, `DEAN`, `CHAIRMAN`)
   - Reader Concurrency: Canvas render cancellation and suppression of abort exceptions
-  - Suite A: Student Submission & Draft Pre-validation
-  - Suite B: Supervisor Review & HOD Recipient Dynamic Resolution
-  - Suite C: DDPC Observer Access Controls
-  - Suite D: HOD Evaluation & Mandatory Statutory Download Denial
-  - Suite E: Return for Revision with Feedback Release
-  - Suite F: Multi-Version Progression to Final Senate Approval
-  - Suite G: Scholar History Dossier & Paginated Tracking
-  - Suite H: Formal Rejection State Machine
-  - Suite I: File Size Upload Enforcements (20 MiB limit)
-  - Suite J: Multi-Role Context Switching & Active Role Verification
-  - Suite K: Audit Trail Logging & Denied Event Recording
-  - Suite L: Frontend Data Contracts & Serialized File Sizes
-  - Suite M: Dynamic Authority Routing & Document Viewing Permissions
-  - Suite N: Regressions: Parallel Branch Convergence, Recipient Deduplication, Byte-Range HTTP 206 Streaming & Spoofed Role Denial
+  - Layout & Sizing: PDF viewport sizing, non-zero canvas geometry, and observer debouncing
+  - Suite A: Student Submission Lifecycle & File Validation
+  - Suite B: Supervisor Review, Recipient Selection & Forwarding
+  - Suite C: DDPC Observer Permissions
+  - Suite D: HOD Review, Recipient Selection & Download Denial
+  - Suite E: Return for Revision, Student Feedback & Resubmission
+  - Suite F: Full Chain to Final Approval (Supervisor -> HOD -> SDPC -> Senate)
+  - Suite G: Supervisor Scholar Tracking Dashboard
+  - Suite H: Formal Rejection Lifecycle
+  - Suite I: File Size Limits & Edge Cases (20 MiB limit)
+  - Suite J: Single Account Holding Multiple Roles
+  - Suite K: Comprehensive Audit Trail Verification
+  - Suite L: Frontend Integration & Data Contract Regressions
+  - Suite M: Thesis Routing, Authority Assignments & Reader Permissions
+  - Suite N: Regressions: Parallel Convergence, Role Verification, Byte-Range & Deduplication
 
 ---
 

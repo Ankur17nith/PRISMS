@@ -1,6 +1,9 @@
 node_modules
-# Keep environment variables out of version control
+# Keep environment variables and secrets out of version control
 .env
+.env.*
+.env*.local
+!.env.example
 /src/generated/prisma
 /db/postgres_data
 /storage
