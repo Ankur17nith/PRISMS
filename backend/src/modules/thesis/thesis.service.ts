@@ -805,22 +805,51 @@ export async function getFacultyReviewQueue(
     orderBy: { assignedAt: "desc" },
   });
 
-  const tasks = assignments.map((a) => ({
-    assignmentId: a.id,
-    submissionId: a.stage.submissionId,
-    submissionNumber: a.stage.submission.submissionNumber,
-    submittedAt: a.stage.submission.submittedAt,
-    workingTitle: a.stage.submission.thesis.workingTitle,
-    studentName: a.stage.submission.thesis.student.user.fullName,
-    rollNumber: a.stage.submission.thesis.student.rollNumber,
-    departmentCode: a.stage.submission.thesis.student.department.code,
-    departmentName: a.stage.submission.thesis.student.department.name,
-    stageCode: a.stage.definition.code,
-    stageName: a.stage.definition.name,
-    assignedRole: a.reviewerRole?.code ?? "REVIEWER",
-    assignedAt: a.assignedAt,
-    status: a.stage.submission.status,
-  }));
+  const tasks = assignments.map((a) => {
+    const studentUser = a.stage.submission.thesis.student.user;
+    const studentDept = a.stage.submission.thesis.student.department;
+    return {
+      assignmentId: a.id,
+      submissionId: a.stage.submissionId,
+      submissionNumber: a.stage.submission.submissionNumber,
+      submittedAt: a.stage.submission.submittedAt,
+      workingTitle: a.stage.submission.thesis.workingTitle,
+      studentName: studentUser.fullName,
+      rollNumber: a.stage.submission.thesis.student.rollNumber,
+      departmentCode: studentDept.code,
+      departmentName: studentDept.name,
+      stageCode: a.stage.definition.code,
+      stageName: a.stage.definition.name,
+      assignedRole: a.reviewerRole?.code ?? "REVIEWER",
+      assignedAt: a.assignedAt,
+      status: a.stage.submission.status,
+      submission: {
+        id: a.stage.submissionId,
+        submissionReference: `TH-2026-${String(a.stage.submission.submissionNumber).padStart(3, "0")}`,
+        title: a.stage.submission.thesis.workingTitle,
+        status: a.stage.submission.status,
+        currentVersion: a.stage.submission.submissionNumber,
+        submittedAt: a.stage.submission.submittedAt ? a.stage.submission.submittedAt.toISOString() : null,
+        student: {
+          rollNumber: a.stage.submission.thesis.student.rollNumber,
+          program: a.stage.submission.thesis.student.program,
+          user: {
+            fullName: studentUser.fullName,
+            collegeEmail: studentUser.collegeEmail,
+          },
+          department: {
+            code: studentDept.code,
+            name: studentDept.name,
+          },
+        },
+      },
+      stage: {
+        code: a.stage.definition.code,
+        name: a.stage.definition.name,
+        sequenceOrder: a.stage.definition.sequenceNumber,
+      },
+    };
+  });
 
   // Also include DDPC observer visibility for student submissions in DDPC's department
   const ddpcRole = userRoles.find((r) => normalizeRoleCode(r.code) === ROLES.DDPC);
@@ -867,6 +896,31 @@ export async function getFacultyReviewQueue(
           assignedRole: ROLES.DDPC,
           assignedAt: sub.submittedAt,
           status: sub.status,
+          submission: {
+            id: sub.id,
+            submissionReference: `TH-2026-${String(sub.submissionNumber).padStart(3, "0")}`,
+            title: sub.thesis.workingTitle,
+            status: sub.status,
+            currentVersion: sub.submissionNumber,
+            submittedAt: sub.submittedAt ? sub.submittedAt.toISOString() : null,
+            student: {
+              rollNumber: sub.thesis.student.rollNumber,
+              program: sub.thesis.student.program,
+              user: {
+                fullName: sub.thesis.student.user.fullName,
+                collegeEmail: sub.thesis.student.user.collegeEmail,
+              },
+              department: {
+                code: sub.thesis.student.department.code,
+                name: sub.thesis.student.department.name,
+              },
+            },
+          },
+          stage: {
+            code: currentStage?.definition.code ?? "PENDING",
+            name: currentStage?.definition.name ?? "Pending Review",
+            sequenceOrder: currentStage?.definition.sequenceNumber ?? 2,
+          },
         });
       }
     }

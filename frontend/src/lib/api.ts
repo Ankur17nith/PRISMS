@@ -628,51 +628,60 @@ export const api = {
       if (Array.isArray(res?.submissions)) return res.submissions;
       return [];
     } catch {
-      return MOCK_SUBMISSIONS;
+      return [];
     }
   },
 
   getSubmissionDetails: async (submissionId: string): Promise<SubmissionItem> => {
-    try {
-      return await request<SubmissionItem>(`/theses/${submissionId}`);
-    } catch {
-      return MOCK_SUBMISSIONS[0];
-    }
+    return await request<SubmissionItem>(`/theses/${submissionId}`);
   },
 
   resubmitThesis: async (submissionId: string, data: { title?: string; workingTitle?: string; abstract?: string; keywords?: string[]; fileScanId?: string; storageKey?: string; originalFileName?: string }) => {
-    try {
-      const payload = {
-        workingTitle: data.workingTitle || data.title,
-        abstract: data.abstract,
-        researchArea: data.keywords ? data.keywords.join(", ") : undefined,
-        storageKey: data.storageKey || data.fileScanId,
-        originalFilename: data.originalFileName || "thesis_revised.pdf",
-        studentNote: "Revised in accordance with committee review remarks.",
-      };
-      return await request<SubmissionItem>(`/theses/${submissionId}/resubmit`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      return {
-        ...MOCK_SUBMISSIONS[0],
-        currentVersion: 2,
-        status: "SUBMITTED",
-        submittedAt: new Date().toISOString(),
-      };
-    }
+    const payload = {
+      workingTitle: data.workingTitle || data.title,
+      abstract: data.abstract,
+      researchArea: data.keywords ? data.keywords.join(", ") : undefined,
+      storageKey: data.storageKey || data.fileScanId,
+      originalFilename: data.originalFileName || "thesis_revised.pdf",
+      studentNote: "Revised in accordance with committee review remarks.",
+    };
+    return await request<SubmissionItem>(`/theses/${submissionId}/resubmit`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
   },
 
   // Thesis - Reviewer & Routing
   getReviewQueue: async (role?: string): Promise<ReviewQueueItem[]> => {
     try {
       const res = await request<any>(`/theses/queue${role ? `?role=${role}` : ""}`);
-      if (Array.isArray(res)) return res;
-      if (Array.isArray(res?.tasks)) return res.tasks;
-      return [];
+      const rawTasks = Array.isArray(res) ? res : Array.isArray(res?.tasks) ? res.tasks : [];
+      return rawTasks.map((t: any) => ({
+        assignmentId: t.assignmentId,
+        status: t.status,
+        assignedAt: t.assignedAt,
+        stage: t.stage || {
+          code: t.stageCode,
+          name: t.stageName,
+          sequenceOrder: 1,
+        },
+        submission: t.submission || {
+          id: t.submissionId,
+          submissionReference: `TH-2026-${String(t.submissionNumber || 1).padStart(3, "0")}`,
+          title: t.workingTitle || "PhD Thesis Submission",
+          status: t.status,
+          currentVersion: t.submissionNumber || 1,
+          submittedAt: t.submittedAt,
+          student: {
+            rollNumber: t.rollNumber || "",
+            program: "PhD",
+            user: { fullName: t.studentName || "Research Scholar", collegeEmail: "" },
+            department: { code: t.departmentCode || "CSE", name: t.departmentName || "Computer Science and Engineering" },
+          },
+        },
+      }));
     } catch {
-      return MOCK_QUEUE;
+      return [];
     }
   },
 
@@ -756,7 +765,7 @@ export const api = {
       if (Array.isArray(res?.scholars)) return res.scholars;
       return [];
     } catch {
-      return MOCK_SCHOLARS;
+      return [];
     }
   },
 
@@ -765,8 +774,8 @@ export const api = {
       return await request<{ scholar: unknown; submissions: SubmissionItem[] }>(`/theses/supervisor/scholars/${scholarId}`);
     } catch {
       return {
-        scholar: MOCK_SCHOLARS[0],
-        submissions: MOCK_SUBMISSIONS,
+        scholar: null,
+        submissions: [],
       };
     }
   },
