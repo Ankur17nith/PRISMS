@@ -5,6 +5,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { env } from "./config/env.js";
 import authRoutes from "./modules/auth/auth.routes.js";
+import thesisRoutes from "./modules/thesis/thesis.routes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
 
 const app: Express = express();
@@ -44,6 +45,7 @@ app.get("/health/db", async (_req: Request, res: Response) => {
 
 
 app.use("/auth", authRoutes);
+app.use("/theses", thesisRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
