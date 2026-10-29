@@ -17,7 +17,7 @@ All 9 top-level canvas nodes specified in the Figma project were systematically 
 
 | Figma Node URL & ID | Canvas / Page Name | Node Type | Purpose & Extracted Content | Frontend Implementation Mapping |
 |---|---|---|---|---|
-| `...node-id=1-2` | **Reference Theme and Original Work** | `CANVAS` | Mobile (390px), Tablet (834px), Desktop (1650px) reference templates & base theme layouts. | Base layout architecture, responsive shell container (`max-w-7xl`), multi-breakpoint grid system. |
+| `...node-id=1-2` | **Reference Theme and Original Work** | `CANVAS` | Mobile (390px), Tablet (834px), Desktop (1650px) reference templates, research portal hero, 28px grid rules, institutional navigation, and footer. | Rendered directly as the primary public root landing page (`/`), with direct sign-in CTA leading to `/login`. |
 | `...node-id=118-3805` | **Design System & Components** | `CANVAS` | Color tokens (`118:3842`), typography tokens, border radii, spacing scales, button states, alert badges. | `frontend/tailwind.config.ts`, `globals.css`, reusable component library (`components/ui/*`). |
 | `...node-id=118-3806` | **Assets and Icon Library** | `CANVAS` | Official NIT Hamirpur emblem (`118:3850`), 12 vector outline SVG icons (`118:3851`). | `frontend/public/assets/nith-logo.png`, `frontend/public/assets/icons/*.svg`, `components/Icon.tsx`. |
 | `...node-id=118-3807` | **Shared Application Shell** | `CANVAS` | Faculty Shell (`118:3473`), Student Shell (`118:3580`), institutional header, bilingual brand banner, gold accent stripe, sidebar navigation. | `frontend/src/components/ApplicationShell.tsx`, `components/Header.tsx`, `components/Sidebar.tsx`. |

@@ -8,7 +8,7 @@ interface AuthContextType {
   user: AuthUser | null;
   activeRole: string | null;
   setActiveRole: (role: string) => void;
-  login: (collegeEmail: string, password: string) => Promise<AuthUser>;
+  login: (collegeEmail: string, password?: string) => Promise<AuthUser>;
   logout: () => Promise<void>;
   loading: boolean;
   refreshUser: () => Promise<void>;
@@ -54,11 +54,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("prisms_active_role", role);
   };
 
-  const login = async (collegeEmail: string, password: string) => {
-    const res = await api.login({ collegeEmail, password });
-    setUser(res.user);
-    if (res.user.roles && res.user.roles.length > 0) {
-      const firstRole = res.user.roles[0].code;
+  const login = async (collegeEmail: string, password = "ChangeMe-Dev-123") => {
+    await api.login({ email: collegeEmail, password });
+    const fullUser = await api.getCurrentUser();
+    setUser(fullUser);
+    if (fullUser.roles && fullUser.roles.length > 0) {
+      const firstRole = fullUser.roles[0].code;
       setActiveRoleState(firstRole);
       localStorage.setItem("prisms_active_role", firstRole);
       if (firstRole === "STUDENT") {
@@ -67,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.push("/faculty/dashboard");
       }
     }
-    return res.user;
+    return fullUser;
   };
 
   const logout = async () => {
