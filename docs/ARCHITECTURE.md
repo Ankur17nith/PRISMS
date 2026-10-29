@@ -18,7 +18,7 @@ flowchart TB
     end
 
     subgraph Gateway["API & Security Boundary"]
-        ReverseProxy["Express Application (Port 5000)"]
+        ReverseProxy["Express Application (Port 4000)"]
         CorsHelmet["CORS / Helmet / CookieParser"]
         AuthMiddleware["requireAuth / requireRole / X-Active-Role"]
         RateLimiter["express-rate-limit"]

@@ -9,7 +9,7 @@ info:
     name: Office of Dean (Academic), NIT Hamirpur
     email: prisms-support@nith.ac.in
 servers:
-  - url: http://localhost:5000
+  - url: http://localhost:4000
     description: Development backend server
 paths:
   /:

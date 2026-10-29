@@ -35,20 +35,22 @@ npm --prefix frontend install
 #### Backend Configuration (`backend/.env`):
 Create `backend/.env` (referencing `backend/.env.example`):
 ```ini
-PORT=5000
+PORT=4000
 FRONTEND_URL="http://localhost:3000"
-DATABASE_URL="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms?schema=public&host=/tmp"
-DATABASE_URL_TEST="postgresql://prisms_app:Ankur1704%40@localhost:5433/prisms_test?schema=public&host=/tmp"
-JWT_ACCESS_SECRET="prisms-development-jwt-access-secret-32-chars-minimum-key"
-JWT_REFRESH_SECRET="prisms-development-jwt-refresh-secret-32-chars-minimum-key"
+DATABASE_URL="postgresql://prisms_app:<db_password>@localhost:5433/prisms?schema=public&host=/tmp"
+DATABASE_URL_TEST="postgresql://prisms_app:<db_password>@localhost:5433/prisms_test?schema=public&host=/tmp"
+JWT_ACCESS_SECRET="your-32-character-secret-key-for-access-jwt-token"
+ACCESS_TOKEN_TTL_MINUTES=15
+REFRESH_TOKEN_TTL_DAYS=7
 MAX_THESIS_FILE_SIZE_BYTES=20971520
 THESIS_STORAGE_PATH="./storage/theses"
 NODE_ENV="development"
 ```
 
-#### Frontend Configuration (`frontend/.env.local`):
+#### Frontend Configuration (`frontend/.env.local`, optional):
+Next.js automatically proxies API routes (`/auth/*`, `/theses/*`, `/api/*`) to `http://127.0.0.1:4000` via rewrites in `next.config.ts`. Optionally, you can set:
 ```ini
-NEXT_PUBLIC_API_URL="http://localhost:5000"
+NEXT_PUBLIC_API_URL="http://localhost:4000"
 ```
 
 ### Step 4: Run Database Migrations and Seed
@@ -70,7 +72,7 @@ npm --prefix backend run seed
 ### Starting the Backend Server
 ```bash
 npm --prefix backend run dev
-# Starts Express on http://localhost:5000 with tsx watch
+# Starts Express on http://localhost:4000 with tsx watch
 ```
 
 ### Starting the Frontend Server
