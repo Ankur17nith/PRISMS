@@ -62,6 +62,31 @@ export function ApplicationShell({ portalType, breadcrumb, children }: Applicati
     { label: "Account Settings", href: "/faculty/settings", icon: "/assets/icon-signout.svg" },
   ];
 
+  // Canonical deduplicated roles
+  const distinctRoles = React.useMemo(() => {
+    if (!user?.roles) return [];
+    const map = new Map<string, (typeof user.roles)[0]>();
+    for (const r of user.roles) {
+      let code = r.code;
+      let name = r.name;
+      if (code === "SDPC") {
+        code = "CHAIRPERSON_SDPC";
+        name = "SDPC Chairperson";
+      } else if (code === "DEAN") {
+        code = "DEAN_ACADEMICS";
+        name = "Dean of Academic Affairs";
+      } else if (code === "CHAIRMAN") {
+        code = "CHAIRPERSON_SENATE";
+        name = "Chairperson Senate / Director";
+      }
+      const key = `${code}_${r.departmentId || "INSTITUTE"}`;
+      if (!map.has(key)) {
+        map.set(key, { ...r, code, name });
+      }
+    }
+    return Array.from(map.values());
+  }, [user?.roles]);
+
   const navItems = portalType === "student" ? studentNavItems : facultyNavItems;
 
   const initials = user?.fullName
@@ -133,45 +158,45 @@ export function ApplicationShell({ portalType, breadcrumb, children }: Applicati
 
         <div className="flex items-center gap-4 mt-1 sm:mt-0">
           {/* Role Context & Switcher */}
-          {user && user.roles && (
-            user.roles.length > 1 ? (
-              <div className="relative">
-                <button
-                  onClick={() => setRoleMenuOpen(!roleMenuOpen)}
-                  className="bg-[#171717] text-[#daa32f] px-2.5 py-0.5 rounded text-[11.5px] font-bold flex items-center gap-1 shadow-sm hover:bg-[#262626] transition cursor-pointer"
-                >
-                  Role: {activeRole || user.roles[0].code} ▾
-                </button>
-                {roleMenuOpen && (
-                  <div className="absolute right-0 mt-1 w-52 bg-white border border-[#e2e2df] rounded shadow-lg z-50 py-1 text-[#303030]">
-                    <div className="px-3 py-1.5 text-[11px] font-bold text-[#666] border-b border-[#f2f2f0] flex justify-between items-center">
-                      <span>Switch Authority Role</span>
-                      <span className="text-[10px] bg-[#f2f2f0] px-1.5 py-0.5 rounded font-mono">{user.roles.length} Roles</span>
-                    </div>
-                    {user.roles.map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => {
-                          setActiveRole(r.code);
-                          setRoleMenuOpen(false);
-                        }}
-                        className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#f2f2f0] flex items-center justify-between transition cursor-pointer ${
-                          activeRole === r.code ? "font-bold text-[#166534] bg-[#edf8ef]" : ""
-                        }`}
-                      >
-                        <span className="truncate pr-2">{r.name}</span>
-                        <span className="text-[10px] text-[#666] font-mono shrink-0">{r.code}</span>
-                      </button>
-                    ))}
+          {distinctRoles.length > 1 ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setRoleMenuOpen(!roleMenuOpen)}
+                className="bg-[#171717] text-[#daa32f] px-2.5 py-0.5 rounded text-[11.5px] font-bold flex items-center gap-1 shadow-sm hover:bg-[#262626] transition cursor-pointer"
+              >
+                Role: {activeRole || distinctRoles[0].code} ▾
+              </button>
+              {roleMenuOpen && (
+                <div className="absolute right-0 mt-1 w-56 bg-white border border-[#e2e2df] rounded shadow-lg z-50 py-1 text-[#303030]">
+                  <div className="px-3 py-1.5 text-[11px] font-bold text-[#666] border-b border-[#f2f2f0] flex justify-between items-center">
+                    <span>Switch Authority Role</span>
+                    <span className="text-[10px] bg-[#f2f2f0] px-1.5 py-0.5 rounded font-mono">{distinctRoles.length} Roles</span>
                   </div>
-                )}
-              </div>
-            ) : (
-              <span className="bg-[#171717] text-[#daa32f] px-2.5 py-0.5 rounded text-[11.5px] font-bold shadow-sm">
-                Role: {activeRole || user.roles[0]?.code}
-              </span>
-            )
-          )}
+                  {distinctRoles.map((r) => (
+                    <button
+                      key={`${r.code}-${r.departmentId || "inst"}`}
+                      type="button"
+                      onClick={() => {
+                        setActiveRole(r.code);
+                        setRoleMenuOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-[12px] hover:bg-[#f2f2f0] flex items-center justify-between transition cursor-pointer ${
+                        activeRole === r.code ? "font-bold text-[#166534] bg-[#edf8ef]" : ""
+                      }`}
+                    >
+                      <span className="truncate pr-2">{r.name}</span>
+                      <span className="text-[10px] text-[#666] font-mono shrink-0">{r.code}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : distinctRoles.length === 1 ? (
+            <span className="bg-[#171717] text-[#daa32f] px-2.5 py-0.5 rounded text-[11.5px] font-bold shadow-sm">
+              Role: {activeRole || distinctRoles[0]?.code}
+            </span>
+          ) : null}
 
           {user ? (
             <div className="flex items-center gap-3">

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { useAuth } from "@/lib/auth";
+import { UserRole } from "@/lib/api";
 
 export default function FacultySettingsPage() {
   const { user, activeRole, setActiveRole } = useAuth();
@@ -65,36 +66,59 @@ export default function FacultySettingsPage() {
           </div>
 
           <div className="space-y-2">
-            {user?.roles?.map((r) => {
-              const isActive = activeRole === r.code;
-              return (
-                <div
-                  key={r.id}
-                  onClick={() => setActiveRole(r.code)}
-                  className={`p-3.5 rounded-[6px] border flex items-center justify-between cursor-pointer transition ${
-                    isActive
-                      ? "border-[#16a34a] bg-[#edf8ef] text-[#166534]"
-                      : "border-[#e2e2df] bg-[#fafaf9] hover:bg-[#f2f2f0] text-[#303030]"
-                  }`}
-                >
-                  <div>
-                    <span className="font-bold text-[13.5px] block">{r.name}</span>
-                    <span className="text-[11px] text-[#666]">
-                      Code: {r.code} · Scope: {r.scopeType}
-                    </span>
+            {(() => {
+              const roleMap = new Map<string, UserRole>();
+              for (const r of user?.roles || []) {
+                let code = r.code;
+                let name = r.name;
+                if (code === "SDPC") {
+                  code = "CHAIRPERSON_SDPC";
+                  name = "SDPC Chairperson";
+                } else if (code === "DEAN") {
+                  code = "DEAN_ACADEMICS";
+                  name = "Dean of Academic Affairs";
+                } else if (code === "CHAIRMAN") {
+                  code = "CHAIRPERSON_SENATE";
+                  name = "Chairperson Senate / Director";
+                }
+                const key = `${code}_${r.departmentId || "INSTITUTE"}`;
+                if (!roleMap.has(key)) {
+                  roleMap.set(key, { ...r, code, name });
+                }
+              }
+              const distinctRoles = Array.from(roleMap.values());
+
+              return distinctRoles.map((r) => {
+                const isActive = activeRole === r.code;
+                return (
+                  <div
+                    key={`${r.code}-${r.departmentId || "inst"}`}
+                    onClick={() => setActiveRole(r.code)}
+                    className={`p-3.5 rounded-[6px] border flex items-center justify-between cursor-pointer transition ${
+                      isActive
+                        ? "border-[#16a34a] bg-[#edf8ef] text-[#166534]"
+                        : "border-[#e2e2df] bg-[#fafaf9] hover:bg-[#f2f2f0] text-[#303030]"
+                    }`}
+                  >
+                    <div>
+                      <span className="font-bold text-[13.5px] block">{r.name}</span>
+                      <span className="text-[11px] text-[#666]">
+                        Code: {r.code} · Scope: {r.scopeType || "INSTITUTE"}
+                      </span>
+                    </div>
+                    {isActive ? (
+                      <span className="text-[12px] font-bold bg-[#16a34a] text-white px-2.5 py-1 rounded">
+                        Active Context ✓
+                      </span>
+                    ) : (
+                      <span className="text-[12px] font-semibold text-[#666]">
+                        Switch to this role
+                      </span>
+                    )}
                   </div>
-                  {isActive ? (
-                    <span className="text-[12px] font-bold bg-[#16a34a] text-white px-2.5 py-1 rounded">
-                      Active Context ✓
-                    </span>
-                  ) : (
-                    <span className="text-[12px] font-semibold text-[#666]">
-                      Switch to this role
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+                );
+              });
+            })()}
           </div>
         </div>
       </div>

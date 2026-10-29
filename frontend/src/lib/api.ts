@@ -223,7 +223,6 @@ const MOCK_USERS: Record<string, AuthUser> = {
     accountStatus: "ACTIVE",
     roles: [
       { id: "r-sdpc", code: "CHAIRPERSON_SDPC", name: "SDPC Chairperson", scopeType: "INSTITUTE" },
-      { id: "r-sdpc-alias", code: "SDPC", name: "SDPC Chairperson", scopeType: "INSTITUTE" },
     ],
     facultyProfile: {
       id: "fac-5",
@@ -238,8 +237,7 @@ const MOCK_USERS: Record<string, AuthUser> = {
     fullName: "Prof. Sanjay Gupta",
     accountStatus: "ACTIVE",
     roles: [
-      { id: "r-dean", code: "DEAN_ACADEMICS", name: "Dean Academics", scopeType: "INSTITUTE" },
-      { id: "r-dean-alias", code: "DEAN", name: "Dean Academics", scopeType: "INSTITUTE" },
+      { id: "r-dean", code: "DEAN_ACADEMICS", name: "Dean of Academic Affairs", scopeType: "INSTITUTE" },
     ],
     facultyProfile: {
       id: "fac-6",
@@ -255,7 +253,6 @@ const MOCK_USERS: Record<string, AuthUser> = {
     accountStatus: "ACTIVE",
     roles: [
       { id: "r-senate", code: "CHAIRPERSON_SENATE", name: "Chairperson Senate / Director", scopeType: "INSTITUTE" },
-      { id: "r-chairman-alias", code: "CHAIRMAN", name: "Chairman Senate", scopeType: "INSTITUTE" },
     ],
     facultyProfile: {
       id: "fac-7",
