@@ -84,3 +84,45 @@ A single faculty user account can hold multiple roles simultaneously (e.g. Dr. R
   - Active review assignments can no longer be advanced by that user.
   - Recipient lists will immediately exclude that user from future forwarding options.
   - Access to unauthorized thesis files is revoked instantly.
+
+---
+
+## 6. Canonical Role Normalization & Deduplication
+
+To eliminate ambiguous or alias entries across database seeds and client role selectors, PRISMS enforces canonical role normalization:
+
+- **Canonical Mappings:**
+  - `SDPC` ➔ `CHAIRPERSON_SDPC` ("SDPC Chairperson")
+  - `DEAN` ➔ `DEAN_ACADEMICS` ("Dean of Academic Affairs")
+  - `CHAIRMAN` ➔ `CHAIRPERSON_SENATE` ("Chairperson Senate / Director")
+- **Active Role Deduplication:**
+  - `getActiveRoles(userId)` normalizes role codes and deduplicates them by `canonicalCode + "_" + departmentId`.
+  - The client `ApplicationShell` and faculty settings view compute `distinctRoles` so that single users holding canonical and alias roles simultaneously see a single, deduplicated role switcher option with accurate role counts.
+
+---
+
+## 7. Actionable Review Queue vs Institutional Tracking Isolation
+
+When a thesis is forwarded from one authority to the next:
+1. **Transactional Stage Advance:** The prior authority's `review_assignment` is marked `COMPLETED` and the stage status changes from `PENDING` to `COMPLETED`. The subsequent stage transitions to `PENDING` with a newly created `ASSIGNED` assignment for the target authority.
+2. **Actionable Queue Removal:** `/theses/queue` only returns records where `reviewerUserId == userId` and `assignmentStatus IN ('ASSIGNED', 'ACCEPTED')` on a stage with `status = 'PENDING'`. A forwarded thesis is immediately and permanently removed from the prior reviewer's active actionable queue.
+3. **Institutional Tracking View:** If the prior reviewer visits `/faculty/reviews/[id]`, the workspace detects `isActionable = false` and replaces the Decision Action Form with the **Institutional Tracking Panel**, displaying the active stage, current designated reviewer, and historical evaluation notes without action buttons.
+
+---
+
+## 8. Dedicated In-Portal Thesis Reader Architecture
+
+PRISMS provides dedicated, authenticated in-portal book reader routes for comprehensive thesis inspection without reliance on external PDF viewer extensions:
+
+- **Routes:**
+  - Student Reader: `/student/thesis/reader` (query param `?id=...&fileId=...`)
+  - Faculty Reader: `/faculty/thesis/reader/[id]`
+- **Security & Permissions:**
+  - Authenticated private streaming from `/theses/:id/file/view` with `Cache-Control: private, no-store`.
+  - **HOD Download Prohibition:** Download button is disabled and hidden in HOD context. HOD viewing is strictly confined to the in-portal streaming canvas. Server rejects any download attempt by HOD with HTTP `403 Forbidden` (`DOWNLOAD_FORBIDDEN_FOR_ROLE`).
+  - Supervisors and Scholars are granted full download permissions.
+- **Canvas Concurrency Management:**
+  - `ThesisBookReader` coordinates all PDF.js `page.render()` executions using `renderTaskRef`, `renderPromiseRef`, and `renderSeqRef`.
+  - In-flight render tasks are explicitly cancelled before subsequent render operations begin.
+  - `RenderingCancelledException` errors are trapped and suppressed without displaying spurious canvas errors.
+
