@@ -90,7 +90,11 @@ export default function FacultyDashboardPage() {
         {/* Role-Specific Institutional Status Banner */}
         {isHod && (
           <div className="p-4 bg-[#fffbeb] border border-[#fde68a] rounded-[8px] text-[13px] text-[#92400e] flex items-start gap-3">
-            <span className="text-[18px]">⚖️</span>
+            <div className="w-8 h-8 rounded-full bg-[#fde68a] text-[#78350f] flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3" />
+              </svg>
+            </div>
             <div>
               <strong className="block text-[13.5px] text-[#78350f] mb-0.5">
                 Departmental Academic Oversight Mode Active
@@ -104,7 +108,11 @@ export default function FacultyDashboardPage() {
 
         {isSupervisor && (
           <div className="p-4 bg-[#eff6ff] border border-[#bfdbfe] rounded-[8px] text-[13px] text-[#1e40af] flex items-start gap-3">
-            <span className="text-[18px]">👨‍🏫</span>
+            <div className="w-8 h-8 rounded-full bg-[#bfdbfe] text-[#1e3a8a] flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-5.824-2.998 12.078 12.078 0 01.665-6.479L12 14zm-4 6v-7.5l4-2.222" />
+              </svg>
+            </div>
             <div>
               <strong className="block text-[13.5px] text-[#1e3a8a] mb-0.5">
                 Doctoral Supervision Portal Active

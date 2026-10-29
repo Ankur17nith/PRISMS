@@ -359,7 +359,9 @@ export function ThesisBookReader({
         {/* Left: Document Info & Page Controls */}
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 font-medium text-[#d4d4d4]">
-            <span className="text-[14px]">📖</span>
+            <svg className="w-4 h-4 text-[#d4d4d4] shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
             <span className="truncate max-w-[180px] sm:max-w-[260px] font-bold text-white">
               {filename}
             </span>
@@ -449,9 +451,23 @@ export function ThesisBookReader({
             onClick={toggleFullscreen}
             title={isFullscreen ? "Exit Fullscreen" : "Fullscreen Reading Mode"}
             aria-label="Toggle Fullscreen"
-            className="bg-[#2d2d2d] hover:bg-[#3d3d3d] text-white px-2.5 py-1 rounded text-[12px] transition cursor-pointer"
+            className="bg-[#2d2d2d] hover:bg-[#3d3d3d] text-white px-2.5 py-1 rounded text-[12px] transition cursor-pointer flex items-center gap-1.5"
           >
-            {isFullscreen ? "⛶ Exit" : "⛶ Fullscreen"}
+            {isFullscreen ? (
+              <>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9L4 4m0 0l4 0m-4 0l0 4m11 0V4m0 0h-4m4 0l-5 5m-6 6l-5 5m0 0h4m-4 0v-4m16 0v4m0 0h-4m4 0l-5-5" />
+                </svg>
+                <span>Exit Fullscreen</span>
+              </>
+            ) : (
+              <>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0-4l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+                </svg>
+                <span>Fullscreen</span>
+              </>
+            )}
           </button>
 
           {/* Download Button OR Statutory View-Only Badge */}
@@ -468,9 +484,11 @@ export function ThesisBookReader({
           ) : (
             <span
               title="NIT Hamirpur regulations restrict thesis file downloading in HOD review mode"
-              className="bg-[#3e341f] border border-[#856404]/50 text-[#e6b800] text-[11px] font-bold px-2.5 py-1 rounded flex items-center gap-1"
+              className="bg-[#3e341f] border border-[#856404]/50 text-[#e6b800] text-[11px] font-bold px-2.5 py-1 rounded flex items-center gap-1.5"
             >
-              <span>🔒</span>
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
               <span>View-Only Mode</span>
             </span>
           )}
@@ -487,7 +505,11 @@ export function ThesisBookReader({
           </div>
         ) : error ? (
           <div className="max-w-md w-full bg-[#2a1b1b] border border-[#7f1d1d] p-6 rounded-[8px] text-center space-y-3 shadow-lg">
-            <div className="text-[32px]">⚠️</div>
+            <div className="w-12 h-12 mx-auto rounded-full bg-[#7f1d1d]/30 flex items-center justify-center text-[#f87171]">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
             <h4 className="font-bold text-[15px] text-[#fca5a5]">Document Access Notice</h4>
             <p className="text-[12.5px] text-[#fecaca] leading-relaxed">{error}</p>
             <div className="pt-2">

@@ -200,7 +200,7 @@ export default function LoginPage() {
           <div className="md:col-span-6 space-y-3">
             <div className="bg-[#fbf3de] border border-[#daa32f]/30 rounded-[8px] p-4 text-[12.5px]">
               <div className="font-bold text-[#171717] flex items-center gap-1.5 mb-1">
-                <span>⚡</span> One-Click Demo Accounts
+                <span className="inline-block w-2 h-2 rounded-full bg-[#daa32f]"></span> One-Click Demo Accounts
               </div>
               <p className="text-[#666] leading-relaxed">
                 Click any role card below to instantly authenticate and test the full institutional workflow.

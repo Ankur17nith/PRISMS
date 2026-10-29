@@ -57,7 +57,11 @@ function StudentThesisReaderContent() {
     return (
       <ApplicationShell portalType="student" breadcrumb="Student portal / In-Portal Thesis Reader">
         <div className="bg-white border border-[#e2e2df] rounded-[8px] p-8 text-center max-w-lg mx-auto space-y-4">
-          <div className="text-[32px]">📄</div>
+          <div className="w-12 h-12 rounded-full bg-[#f2f2f0] text-[#666] flex items-center justify-center mx-auto">
+            <svg className="w-6 h-6 stroke-current" fill="none" viewBox="0 0 24 24" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
           <h2 className="text-[18px] font-bold text-[#171717]">Document Unavailable</h2>
           <p className="text-[13px] text-[#b42318]">{error || "Thesis submission could not be located."}</p>
           <div className="pt-2">
