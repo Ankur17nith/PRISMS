@@ -158,7 +158,7 @@ export default function FacultyScholarsPage() {
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        {targetId ? (
+                        {targetId && targetId !== "undefined" ? (
                           <Link
                             href={`/faculty/scholars/${targetId}`}
                             className="font-bold text-[12.5px] text-[#16a34a] hover:underline"

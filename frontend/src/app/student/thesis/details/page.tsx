@@ -19,14 +19,20 @@ function SubmissionDetailsContent() {
     async function load() {
       try {
         let sub: SubmissionItem;
-        if (idFromQuery && idFromQuery !== "undefined") {
-          sub = await api.getSubmissionDetails(idFromQuery);
+        const isValidUuid =
+          Boolean(idFromQuery) &&
+          idFromQuery !== "undefined" &&
+          idFromQuery !== "null" &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(idFromQuery!);
+
+        if (isValidUuid) {
+          sub = await api.getSubmissionDetails(idFromQuery!);
         } else {
           const list = await api.getMySubmissions();
           if (list && list.length > 0) {
             sub = await api.getSubmissionDetails(list[0].id);
           } else {
-            setError("No thesis submissions found.");
+            setError("No thesis submissions found for your doctoral account.");
             return;
           }
         }
