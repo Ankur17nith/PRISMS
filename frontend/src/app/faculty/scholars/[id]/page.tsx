@@ -4,6 +4,7 @@ import React, { useEffect, useState, use } from "react";
 import Link from "next/link";
 import { ApplicationShell } from "@/components/ApplicationShell";
 import { api, SubmissionItem } from "@/lib/api";
+import { formatStatusLabel, getStatusBadgeClasses } from "@/lib/statusHelper";
 
 export default function ScholarHistoryDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -13,6 +14,11 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
 
   useEffect(() => {
     async function load() {
+      if (!id || id === "undefined") {
+        setError("Invalid scholar identifier provided.");
+        setLoading(false);
+        return;
+      }
       try {
         const res = await api.getScholarHistory(id);
         setData(res);
@@ -33,11 +39,11 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
     );
   }
 
-  if (error || !data) {
+  if (error || !data || !data.scholar) {
     return (
       <ApplicationShell portalType="faculty" breadcrumb="Faculty portal / Scholar Record">
         <div className="bg-white border border-[#e2e2df] rounded-[8px] p-6 text-center">
-          <p className="text-[14px] text-[#b42318] font-bold mb-2">{error || "Scholar not found"}</p>
+          <p className="text-[14px] text-[#b42318] font-bold mb-2">{error || "Scholar record not found"}</p>
           <Link href="/faculty/scholars" className="text-[13px] text-[#16a34a] hover:underline font-bold">
             ← Return to Scholars List
           </Link>
@@ -47,12 +53,19 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
   }
 
   // Cast scholar to known fields
-  const scholarObj = data.scholar as {
+  const scholarObj = (data.scholar || {}) as {
     rollNumber?: string;
+    fullName?: string;
     program?: string;
+    collegeEmail?: string;
     user?: { fullName?: string; collegeEmail?: string };
-    department?: { name?: string };
+    department?: { name?: string; code?: string };
   };
+
+  const scholarFullName = scholarObj.fullName || scholarObj.user?.fullName || "Scholar Record";
+  const scholarRoll = scholarObj.rollNumber || "N/A";
+  const scholarProgram = scholarObj.program || "PhD";
+  const deptName = scholarObj.department?.name || "Computer Science and Engineering";
 
   return (
     <ApplicationShell portalType="faculty" breadcrumb="Faculty portal / Scholar Record">
@@ -66,11 +79,11 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
               ← Back to All Scholars
             </Link>
             <h1 className="text-[26px] font-bold text-[#171717] mt-1">
-              {scholarObj.user?.fullName || "Scholar Record"}
+              {scholarFullName}
             </h1>
             <p className="text-[13px] text-[#666]">
-              Roll: <span className="font-bold text-[#171717]">{scholarObj.rollNumber}</span> · {scholarObj.program} ·
-              Dept. of {scholarObj.department?.name || "CSE"}
+              Roll: <span className="font-bold text-[#171717]">{scholarRoll}</span> · {scholarProgram} ·
+              Dept. of {deptName}
             </p>
           </div>
         </div>
@@ -96,15 +109,9 @@ export default function ScholarHistoryDetailPage({ params }: { params: Promise<{
                     </div>
                     <div className="flex items-center gap-2">
                       <span
-                        className={`text-[11.5px] font-bold px-2.5 py-0.5 rounded ${
-                          sub.status === "APPROVED"
-                            ? "bg-[#edf8ef] text-[#166534]"
-                            : sub.status === "REVISION_REQUIRED"
-                            ? "bg-[#fff7e6] text-[#8a570d]"
-                            : "bg-[#edf8ef] text-[#166534]"
-                        }`}
+                        className={`text-[11.5px] font-bold px-2.5 py-0.5 rounded ${getStatusBadgeClasses(sub.status)}`}
                       >
-                        {sub.status.replace(/_/g, " ")}
+                        {formatStatusLabel(sub.status)}
                       </span>
                       <Link
                         href={`/faculty/reviews/${sub.id}`}
