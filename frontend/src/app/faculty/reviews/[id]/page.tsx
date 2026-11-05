@@ -254,9 +254,9 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
               <span>Open in Reader</span>
             </Link>
 
-            {activeRole === "HOD" ? (
+            {activeRole === "HOD" || activeRole === "SUPERVISOR" ? (
               <span
-                title="NIT Hamirpur regulations restrict thesis file downloading in HOD review mode"
+                title="NIT Hamirpur regulations restrict thesis file downloading. In-portal view-only mode active."
                 className="bg-[#3e341f] border border-[#856404]/50 text-[#e6b800] text-[11px] font-bold px-2.5 py-1.5 rounded flex items-center gap-1.5"
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -311,7 +311,7 @@ export default function FacultyReviewWorkspacePage({ params }: { params: Promise
                 submissionId={submission.id}
                 fileId={latestFile?.id}
                 filename={latestFile?.originalFileName || "thesis_document.pdf"}
-                canDownload={activeRole !== "HOD"}
+                canDownload={activeRole !== "HOD" && activeRole !== "SUPERVISOR"}
                 userRole={activeRole}
               />
             )}

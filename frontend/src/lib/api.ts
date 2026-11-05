@@ -589,13 +589,13 @@ export const api = {
         body: JSON.stringify(payload),
       });
     } catch {
-      // Return structured receipt for demo
-      return {
+      // Return structured receipt for demo and save to in-memory mock lists
+      const newSub: SubmissionItem = {
         id: "sub-" + Date.now(),
         submissionReference: "TH-2026-" + Math.floor(100 + Math.random() * 900),
         title: data.title || data.workingTitle || "Scalable Consensus Protocols for Heterogeneous Edge Networks",
         status: "SUBMITTED",
-        currentVersion: 1,
+        currentVersion: (MOCK_SUBMISSIONS[0]?.currentVersion || 1) + 1,
         submittedAt: new Date().toISOString(),
         student: {
           rollNumber: "21PHDCSE01",
@@ -605,15 +605,22 @@ export const api = {
         },
         stages: [
           {
-            id: "stg-1",
+            id: "stg-" + Date.now(),
             sequenceOrder: 1,
             status: "PENDING",
             stageDefinition: { code: "SUPERVISOR_REVIEW", name: "Supervisor Review" },
+            assignments: [
+              {
+                id: "asg-" + Date.now(),
+                status: "PENDING",
+                reviewer: { id: "fac-1", fullName: "Dr. Rajesh Kumar", collegeEmail: "supervisor1@example.test" },
+              },
+            ],
           },
         ],
         files: [
           {
-            id: "file-new-1",
+            id: "file-new-" + Date.now(),
             originalFileName: data.originalFileName || "thesis_final_submission.pdf",
             fileSizeBytes: 4820000,
             scanStatus: "CLEAN",
@@ -621,6 +628,34 @@ export const api = {
           },
         ],
       };
+
+      MOCK_SUBMISSIONS.unshift(newSub);
+
+      MOCK_QUEUE.unshift({
+        assignmentId: "asg-mock-" + Date.now(),
+        status: "PENDING",
+        assignedAt: new Date().toISOString(),
+        submission: newSub,
+        stage: {
+          code: "SUPERVISOR_REVIEW",
+          name: "Supervisor Review",
+          sequenceOrder: 1,
+        },
+      });
+
+      if (MOCK_SCHOLARS[0]) {
+        MOCK_SCHOLARS[0].activeSubmission = {
+          id: newSub.id,
+          submissionReference: newSub.submissionReference,
+          title: newSub.title,
+          status: newSub.status,
+          currentVersion: newSub.currentVersion,
+          submittedAt: newSub.submittedAt,
+          currentStage: "Supervisor Review",
+        };
+      }
+
+      return newSub;
     }
   },
 
@@ -644,8 +679,19 @@ export const api = {
     if (!submissionId || submissionId === "undefined") {
       throw new Error("Invalid submission identifier provided.");
     }
-    const res = await request<any>(`/theses/${submissionId}`);
-    return normalizeSubmission(res?.submission || res);
+    try {
+      const res = await request<any>(`/theses/${submissionId}`);
+      return normalizeSubmission(res?.submission || res);
+    } catch (err) {
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("prisms_demo_user");
+        if (stored) {
+          const match = MOCK_SUBMISSIONS.find((s) => s.id === submissionId) || MOCK_SUBMISSIONS[0];
+          return normalizeSubmission(match);
+        }
+      }
+      throw err;
+    }
   },
 
   resubmitThesis: async (submissionId: string, data: { title?: string; workingTitle?: string; abstract?: string; keywords?: string[]; fileScanId?: string; storageKey?: string; originalFileName?: string }) => {
@@ -693,6 +739,9 @@ export const api = {
         },
       }));
     } catch {
+      if (typeof window !== "undefined" && localStorage.getItem("prisms_demo_user")) {
+        return MOCK_QUEUE;
+      }
       return [];
     }
   },
@@ -834,6 +883,9 @@ export const api = {
         };
       });
     } catch {
+      if (typeof window !== "undefined" && localStorage.getItem("prisms_demo_user")) {
+        return MOCK_SCHOLARS;
+      }
       return [];
     }
   },
@@ -881,6 +933,13 @@ export const api = {
         submissions: rawSubs.map((s: any) => normalizeSubmission(s)),
       };
     } catch {
+      if (typeof window !== "undefined" && localStorage.getItem("prisms_demo_user")) {
+        const found = MOCK_SCHOLARS.find((s) => s.scholarId === scholarId || s.studentId === scholarId) || MOCK_SCHOLARS[0];
+        return {
+          scholar: found,
+          submissions: MOCK_SUBMISSIONS.map((s) => normalizeSubmission(s)),
+        };
+      }
       return {
         scholar: null,
         submissions: [],

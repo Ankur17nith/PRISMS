@@ -118,7 +118,7 @@ export default function FacultyDashboardPage() {
                 Doctoral Supervision Portal Active
               </strong>
               <p className="leading-relaxed">
-                Direct scholar supervision: evaluate dissertation drafts, provide guidance notes, and endorse initial thesis submissions for your assigned research scholars. Full document inspection and download permissions are enabled.
+                Direct scholar supervision: evaluate dissertation drafts, provide guidance notes, and endorse initial thesis submissions for your assigned research scholars. Secure in-portal document inspection is enabled in view-only reading mode.
               </p>
             </div>
           </div>

@@ -21,7 +21,8 @@ export default function FacultyThesisReaderPage({
   const [error, setError] = useState<string | null>(null);
 
   const isHod = activeRole === "HOD";
-  const canDownload = !isHod;
+  const isSupervisor = activeRole === "SUPERVISOR";
+  const canDownload = !isHod && !isSupervisor;
 
   useEffect(() => {
     async function loadData() {
@@ -132,17 +133,19 @@ export default function FacultyThesisReaderPage({
           </div>
         </div>
 
-        {/* Mandatory Statutory HOD Download Restriction Notice */}
-        {isHod && (
+        {/* Mandatory Statutory Download Restriction Notice for Faculty Reviewers */}
+        {(isHod || isSupervisor) && (
           <div className="bg-[#fff7e6] border border-[#daa32f] rounded-[8px] p-3.5 flex items-start gap-3 text-[12.5px] text-[#8a570d] shadow-sm">
             <svg className="w-5 h-5 shrink-0 text-[#8a570d] mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
             <div>
-              <span className="font-bold block">NIT Hamirpur Institutional Compliance Notice (HOD Evaluation Mode):</span>
-              In accordance with institutional ordinances, Head of Department review access is strictly confined to secure
+              <span className="font-bold block">
+                NIT Hamirpur Institutional Compliance Notice ({isSupervisor ? "Supervisor" : "HOD"} Evaluation Mode):
+              </span>
+              In accordance with institutional ordinances, faculty review access is strictly confined to secure
               in-portal reading. File downloading, local archiving, and external distribution are prohibited by policy and
-              prevented at the server level.
+              prevented in this portal.
             </div>
           </div>
         )}
