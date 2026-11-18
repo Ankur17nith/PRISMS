@@ -57,6 +57,11 @@ router.put("/draft", requireAuth, validate(draftMetadataSchema), async (req, res
 router.post(
   "/upload",
   requireAuth,
+  async (req, _res, next) => {
+    // Only scholars upload theses; do not let other accounts fill private storage.
+    await service.getStudentByUserId(req.auth!.userId);
+    next();
+  },
   (req, res, next) => {
     upload.single("file")(req, res, (err: any) => {
       if (err instanceof multer.MulterError) {
@@ -285,6 +290,7 @@ router.get("/supervisor/scholars", requireAuth, async (req, res) => {
     req.auth!.userId,
     parsed.data,
     typeof req.query.role === "string" ? req.query.role : undefined,
+    req.auth!.roles,
   );
   res.json(result);
 });
@@ -295,6 +301,7 @@ router.get("/supervisor/scholars/:studentId", requireAuth, async (req, res) => {
     req.auth!.userId,
     uuidParam(req.params.studentId, "scholar"),
     typeof req.query.role === "string" ? req.query.role : undefined,
+    req.auth!.roles,
   );
   res.json(result);
 });

@@ -166,6 +166,7 @@ PRISMS/
 | `SMTP_USER` | Username for SMTP server authentication. | Optional | Unset |
 | `SMTP_PASS` | Password for SMTP server authentication. | Optional | Unset |
 | `MAIL_FROM` | RFC 5322 display name and address for system email notifications. | Optional | `PRISMS <no-reply@prisms.local>` |
+| `TRUST_PROXY` | Number of reverse proxies in front of the API (e.g. `1`). Required behind nginx/ALB so rate limiting and audit logs use real client IPs. | Optional | `0` |
 | `NODE_ENV` | Application runtime environment (`development`, `test`, `production`). | Optional | `development` |
 
 > [!NOTE]
@@ -180,10 +181,26 @@ PRISMS/
 
 ## 5. Seed Accounts
 
-Default development accounts configured with password `Password123!`:
+Development accounts created by `npm --prefix backend run seed` (non-production only). All use the password
+from the `SEED_PASSWORD` environment variable, or `ChangeMe-Dev-123` when it is unset. Never use these in production.
 
 | Portal / Role | Email | Name | Scope / Department |
 |:---|:---|:---|:---|
+| **Scholar 1** | `student1@example.test` | Aarav Sharma | PhD Scholar (`21PHDCSE01`), supervised by Supervisor 1 |
+| **Scholar 2** | `student2@example.test` | Diya Patel | PhD Scholar (`21PHDCSE02`), supervised by Supervisor 2 |
+| **Supervisor 1** | `supervisor1@example.test` | Dr. Rajesh Kumar | CSE Faculty |
+| **Supervisor 2** | `supervisor2@example.test` | Dr. Sunita Rao | CSE Faculty |
+| **HOD** | `hod.cse@example.test` | Prof. Anil Verma | Head, Dept. of CSE *(Strictly View-Only)* |
+| **DDPC** | `ddpc.cse@example.test` | Dr. Meera Iyer | DDPC Convenor, CSE *(observer)* |
+| **Chairperson SDPC** | `sdpc@example.test` | Prof. Vikram Malhotra | Senate Degree Review |
+| **Dean Academics** | `dean@example.test` | Prof. Sanjay Gupta | Office of Dean (Academic) |
+| **Chairperson Senate**| `chairman@example.test` | Director & Chairman Senate | Senate Final Approval Authority |
+| **Admin** | `admin@example.test` | Administrator | Institutional IT |
+
+> The frontend's demo conveniences (one-click demo accounts, pre-filled seed password, offline mock sign-in) are
+> enabled only in development builds. Production builds disable them unless `NEXT_PUBLIC_ENABLE_DEMO_MODE=true`.
+
+---|:---|:---|:---|
 | **Scholar 1** | `aarav.sharma@example.test` | Aarav Sharma | PhD Scholar (`21PHDCSE01`) |
 | **Scholar 2** | `sneha.patel@example.test` | Sneha Patel | PhD Scholar (`21PHDCSE02`) |
 | **Supervisor 1** | `supervisor1@example.test`| Dr. Rajesh Kumar | CSE Faculty |
@@ -203,7 +220,7 @@ npm --prefix backend test
 ```
 
 ### Verified Test Results:
-- **75/75 passing tests (0 failures)** across 18 suites:
+- **79/79 passing tests (0 failures)** across 19 suites:
   - Role Normalization: Deduplication of role aliases (`SDPC`, `DEAN`, `CHAIRMAN`)
   - Reader Concurrency: Canvas render cancellation and suppression of abort exceptions
   - Layout & Sizing: PDF viewport sizing, non-zero canvas geometry, and observer debouncing
@@ -221,6 +238,7 @@ npm --prefix backend test
   - Suite L: Frontend Integration & Data Contract Regressions
   - Suite M: Thesis Routing, Authority Assignments & Reader Permissions
   - Suite N: Regressions: Parallel Convergence, Role Verification, Byte-Range & Deduplication
+  - Security & parallel-review regressions: student-only uploads, filename sanitisation, storage-key reuse, server-verified HOD role claims, Dean-first parallel review
 
 ---
 

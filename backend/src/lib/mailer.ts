@@ -11,6 +11,11 @@ const transport = env.SMTP_HOST
 
 export async function sendMail(msg: { to: string; subject: string; text: string }) {
   if (!transport) {
+    if (env.NODE_ENV === "production") {
+      // Mail bodies carry one-time verification/reset tokens: never write them to production logs.
+      console.error(`[mail] SMTP_HOST is not configured; email to a user was NOT sent (subject: ${msg.subject})`);
+      return;
+    }
     console.log(`\n[mail:console] to=${msg.to}\nsubject: ${msg.subject}\n${msg.text}\n`);
     return;
   }

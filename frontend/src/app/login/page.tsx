@@ -4,11 +4,12 @@ import React, { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { DEMO_MODE, DEV_DEFAULT_PASSWORD } from "@/lib/api";
 
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState("student1@example.test");
-  const [password, setPassword] = useState("ChangeMe-Dev-123");
+  const [email, setEmail] = useState(DEMO_MODE ? "student1@example.test" : "");
+  const [password, setPassword] = useState(DEV_DEFAULT_PASSWORD);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,11 +32,11 @@ export default function LoginPage() {
 
   const handleQuickLogin = async (accountEmail: string) => {
     setEmail(accountEmail);
-    setPassword("ChangeMe-Dev-123");
+    setPassword(DEV_DEFAULT_PASSWORD);
     setError(null);
     setLoading(true);
     try {
-      await login(accountEmail, "ChangeMe-Dev-123");
+      await login(accountEmail, DEV_DEFAULT_PASSWORD);
     } catch (err: unknown) {
       if (err instanceof Error) {
         setError(err.message);
@@ -163,9 +164,11 @@ export default function LoginPage() {
                   <label className="block text-[12.5px] font-bold text-[#171717]">
                     Password
                   </label>
-                  <span className="text-[11px] text-[#888] font-mono">
-                    Default: ChangeMe-Dev-123
-                  </span>
+                  {DEMO_MODE && (
+                    <span className="text-[11px] text-[#888] font-mono">
+                      Default: ChangeMe-Dev-123
+                    </span>
+                  )}
                 </div>
                 <input
                   type="password"
@@ -196,7 +199,8 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Quick Demo Accounts */}
+          {/* Quick Demo Accounts (development only) */}
+          {DEMO_MODE && (
           <div className="md:col-span-6 space-y-3">
             <div className="bg-[#fbf3de] border border-[#daa32f]/30 rounded-[8px] p-4 text-[12.5px]">
               <div className="font-bold text-[#171717] flex items-center gap-1.5 mb-1">
@@ -237,13 +241,14 @@ export default function LoginPage() {
               ))}
             </div>
           </div>
+          )}
         </div>
       </main>
 
       {/* Footer */}
       <footer className="text-center text-[12px] text-[#737373] py-4 border-t border-[#e2e2df] bg-white flex flex-col sm:flex-row items-center justify-between px-6 gap-2">
         <div>
-          National Institute of Technology Hamirpur · PRISMS Doctoral Portal · Default password: <code className="bg-[#f2f2f0] px-1 py-0.5 rounded font-mono text-[11px]">ChangeMe-Dev-123</code>
+          National Institute of Technology Hamirpur · PRISMS Doctoral Portal{DEMO_MODE && (<> · Default password: <code className="bg-[#f2f2f0] px-1 py-0.5 rounded font-mono text-[11px]">ChangeMe-Dev-123</code></>)}
         </div>
         <div className="flex flex-wrap items-center gap-3 text-[11.5px]">
           <span>

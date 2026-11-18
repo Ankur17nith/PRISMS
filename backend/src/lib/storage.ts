@@ -137,7 +137,7 @@ export async function deleteSecureFile(storageKey: string): Promise<void> {
 }
 
 /** Sanitizes original filenames to prevent header injection and path issues. */
-function sanitizeFilename(name: string): string {
-  const base = path.basename(name).replace(/[^a-zA-Z0-9._-]/g, "_");
-  return base.endsWith(".pdf") ? base : `${base}.pdf`;
+export function sanitizeFilename(name: string): string {
+  const base = path.basename(name).replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 200);
+  return base.toLowerCase().endsWith(".pdf") ? base : `${base}.pdf`;
 }

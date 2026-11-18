@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, AuthUser } from "./api";
+import { api, AuthUser, DEV_DEFAULT_PASSWORD } from "./api";
 
 interface AuthContextType {
   user: AuthUser | null;
@@ -54,7 +54,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("prisms_active_role", role);
   };
 
-  const login = async (collegeEmail: string, password = "ChangeMe-Dev-123") => {
+  const login = async (collegeEmail: string, password = DEV_DEFAULT_PASSWORD) => {
     await api.login({ email: collegeEmail, password });
     const fullUser = await api.getCurrentUser();
     setUser(fullUser);
