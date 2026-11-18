@@ -43,7 +43,7 @@ router.post("/login", limiter(20), validate(loginSchema), async (req, res) => {
   res.json({ user });
 });
 
-router.post("/refresh", async (req, res) => {
+router.post("/refresh", limiter(120), async (req, res) => {
   await service.refresh(req, res);
   res.status(204).end();
 });

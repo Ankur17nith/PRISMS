@@ -4,7 +4,7 @@ import { AppError } from "../../lib/errors.js";
 import fs from "node:fs";
 import { createHash } from "node:crypto";
 import { audit } from "../../lib/audit.js";
-import { fileExists, getSecureFilePath, ValidatedPdf } from "../../lib/storage.js";
+import { fileExists, getSecureFilePath, sanitizeFilename, ValidatedPdf } from "../../lib/storage.js";
 import type { AuthContext } from "../../middleware/auth.js";
 import { ROLES, STAGE_CODES, hasNormalizedRole, normalizeRoleCode } from "./thesis.constants.js";
 import type {
@@ -73,6 +73,40 @@ export async function getOrCreateStageDefinition(code: string, name: string, seq
     update: { name, sequenceNumber },
     create: { code, name, sequenceNumber, isActive: true },
   });
+}
+
+
+/**
+ * With parallel review branches (SDPC + Dean) a submission can have several PENDING stages.
+ * Pick the pending stage this reviewer is actually assigned to; never an arbitrary one.
+ */
+function pickPendingStageForReviewer<
+  S extends { assignments: { reviewerUserId: string; assignmentStatus: string }[] },
+>(stages: S[], userId: string): S | undefined {
+  return (
+    stages.find((st) =>
+      st.assignments.some(
+        (a) => a.reviewerUserId === userId && (a.assignmentStatus === "ASSIGNED" || a.assignmentStatus === "ACCEPTED"),
+      ),
+    ) ?? stages[0]
+  );
+}
+
+/** Roles asserted by the client (?role=) are only honoured if the user really holds them. */
+function holdsRole(roles: { code: string; departmentId: string | null }[], role: string, departmentId?: string) {
+  return roles.some(
+    (r) =>
+      normalizeRoleCode(r.code) === normalizeRoleCode(role) &&
+      (departmentId === undefined || r.departmentId === departmentId),
+  );
+}
+
+/** A storage key may be attached to exactly one submission file. */
+async function assertStorageKeyUnused(storageKey: string) {
+  const existing = await prisma.thesisFile.findUnique({ where: { storageKey }, select: { id: true } });
+  if (existing) {
+    throw new AppError(409, "This uploaded file is already attached to a submission. Please upload again", "FILE_ALREADY_USED");
+  }
 }
 
 // -----------------------------------------------------------------------------
@@ -215,6 +249,7 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
   if (!fileExists(input.storageKey)) {
     throw new AppError(400, "Uploaded file not found in secure storage. Please upload again", "FILE_NOT_FOUND");
   }
+  await assertStorageKeyUnused(input.storageKey);
 
   // Determine next submission version number
   const latestSubmission = await prisma.thesisSubmission.findFirst({
@@ -264,7 +299,7 @@ export async function submitThesis(userId: string, input: SubmitInput, req?: Req
       data: {
         submissionId: sub.id,
         uploadedByUserId: userId,
-        originalFilename: input.originalFilename ?? "thesis.pdf",
+        originalFilename: sanitizeFilename(input.originalFilename ?? "thesis.pdf"),
         storageKey: input.storageKey!,
         mimeType: "application/pdf",
         fileSizeBytes,
@@ -349,6 +384,7 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
   if (!fileExists(input.storageKey)) {
     throw new AppError(400, "Revised file not found in storage. Please re-upload", "FILE_NOT_FOUND");
   }
+  await assertStorageKeyUnused(input.storageKey);
 
   const nextNumber = latest.submissionNumber + 1;
   const supervisorStageDef = await getOrCreateStageDefinition(
@@ -387,7 +423,7 @@ export async function resubmitThesis(userId: string, input: ResubmitInput, req?:
       data: {
         submissionId: sub.id,
         uploadedByUserId: userId,
-        originalFilename: input.originalFilename,
+        originalFilename: sanitizeFilename(input.originalFilename),
         storageKey: input.storageKey,
         mimeType: "application/pdf",
         fileSizeBytes: resubmitFileSizeBytes,
@@ -1096,7 +1132,7 @@ export async function getAuthorizedRecipients(submissionId: string, userId: stri
     throw new AppError(404, "Thesis submission not found", "SUBMISSION_NOT_FOUND");
   }
 
-  const currentStage = submission.stages[0];
+  const currentStage = pickPendingStageForReviewer(submission.stages, userId);
   if (!currentStage) {
     return {
       isActionable: false,
@@ -1278,7 +1314,7 @@ export async function forwardSubmission(
     throw new AppError(400, `Cannot forward submission with status ${submission.status}`, "INVALID_STATUS");
   }
 
-  const currentStage = submission.stages[0];
+  const currentStage = pickPendingStageForReviewer(submission.stages, userId);
   if (!currentStage) {
     throw new AppError(400, "No pending workflow stage found for this submission", "NO_ACTIVE_STAGE");
   }
@@ -1557,7 +1593,7 @@ export async function returnSubmission(
     throw new AppError(400, `Cannot return submission with status ${submission.status}`, "INVALID_STATUS");
   }
 
-  const currentStage = submission.stages[0];
+  const currentStage = pickPendingStageForReviewer(submission.stages, userId);
   if (!currentStage) {
     throw new AppError(400, "No pending workflow stage found for this submission", "NO_ACTIVE_STAGE");
   }
@@ -1648,7 +1684,7 @@ export async function rejectSubmission(
     throw new AppError(404, "Thesis submission not found", "SUBMISSION_NOT_FOUND");
   }
 
-  const currentStage = submission.stages[0];
+  const currentStage = pickPendingStageForReviewer(submission.stages, userId);
   if (!currentStage) {
     throw new AppError(400, "No pending workflow stage found for this submission", "NO_ACTIVE_STAGE");
   }
@@ -1731,6 +1767,7 @@ export async function getSupervisorScholars(
   userId: string,
   query: ScholarQuery,
   actingRole?: string,
+  userRoles: { code: string; departmentId: string | null }[] = [],
 ) {
   const faculty = await prisma.faculty.findUnique({
     where: { userId },
@@ -1740,7 +1777,12 @@ export async function getSupervisorScholars(
     throw new AppError(403, "You do not have a registered faculty profile", "NOT_FACULTY");
   }
 
-  const isHod = normalizeRoleCode(actingRole || "") === ROLES.HOD;
+  const claimsHod = normalizeRoleCode(actingRole || "") === ROLES.HOD;
+  // The acting role comes from the client: only honour it if the user really is HOD of their department.
+  if (claimsHod && !holdsRole(userRoles, ROLES.HOD, faculty.departmentId)) {
+    throw new AppError(403, "You do not hold the Head of Department role", "ROLE_UNAUTHORIZED");
+  }
+  const isHod = claimsHod;
   const now = new Date();
 
   if (isHod) {
@@ -1945,6 +1987,7 @@ export async function getSupervisorScholarHistory(
   supervisorUserId: string,
   studentId: string,
   actingRole?: string,
+  userRoles: { code: string; departmentId: string | null }[] = [],
 ) {
   const faculty = await prisma.faculty.findUnique({
     where: { userId: supervisorUserId },
@@ -1954,7 +1997,12 @@ export async function getSupervisorScholarHistory(
     throw new AppError(403, "You do not have a registered faculty profile", "NOT_FACULTY");
   }
 
-  const isHod = normalizeRoleCode(actingRole || "") === ROLES.HOD;
+  const claimsHod = normalizeRoleCode(actingRole || "") === ROLES.HOD;
+  // The acting role comes from the client: only honour it if the user really is HOD of their department.
+  if (claimsHod && !holdsRole(userRoles, ROLES.HOD, faculty.departmentId)) {
+    throw new AppError(403, "You do not hold the Head of Department role", "ROLE_UNAUTHORIZED");
+  }
+  const isHod = claimsHod;
 
   // Verify that this faculty supervises (or supervised) this scholar OR is HOD of the department
   const assignment = await prisma.studentSupervisorAssignment.findFirst({

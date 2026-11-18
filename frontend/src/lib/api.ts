@@ -125,6 +125,14 @@ export interface ScholarItem {
   } | null;
 }
 
+/**
+ * Demo conveniences (password-less mock sign-in, pre-filled seed password, demo account cards) exist for
+ * local development only. They are disabled in production builds unless NEXT_PUBLIC_ENABLE_DEMO_MODE=true.
+ */
+export const DEMO_MODE =
+  process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === "true";
+export const DEV_DEFAULT_PASSWORD = DEMO_MODE ? "ChangeMe-Dev-123" : "";
+
 export class ApiError extends Error {
   constructor(public status: number, message: string, public data?: unknown) {
     super(message);
@@ -414,7 +422,7 @@ export const api = {
   // Auth
   login: async (credentials: { collegeEmail?: string; email?: string; password?: string }) => {
     const email = (credentials.email || credentials.collegeEmail || "").trim().toLowerCase();
-    const password = credentials.password || "ChangeMe-Dev-123";
+    const password = credentials.password || DEV_DEFAULT_PASSWORD;
 
     try {
       const res = await request<{ user: { id: string; email: string; fullName: string } }>("/auth/login", {
@@ -427,7 +435,7 @@ export const api = {
       return res;
     } catch (err) {
       // Fallback to high-fidelity demo authentication for testing/demonstration
-      const mock = findMockUser(email);
+      const mock = DEMO_MODE ? findMockUser(email) : null;
       if (mock && typeof window !== "undefined") {
         localStorage.setItem("prisms_demo_user", JSON.stringify(mock));
         return { user: { id: mock.id, email: mock.collegeEmail, fullName: mock.fullName } };
@@ -463,7 +471,7 @@ export const api = {
       throw new Error("Invalid user profile");
     } catch (err) {
       if (typeof window !== "undefined") {
-        const stored = localStorage.getItem("prisms_demo_user");
+        const stored = DEMO_MODE ? localStorage.getItem("prisms_demo_user") : null;
         if (stored) {
           try {
             return JSON.parse(stored) as AuthUser;
