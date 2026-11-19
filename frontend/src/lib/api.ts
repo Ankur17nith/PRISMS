@@ -131,6 +131,14 @@ export interface ScholarItem {
  */
 export const DEMO_MODE =
   process.env.NODE_ENV !== "production" || process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === "true";
+/** True only when the user explicitly signed in through the offline demo fallback (development only). */
+export const isDemoSession = () =>
+  OFFLINE_DEMO && typeof window !== "undefined" && !!localStorage.getItem("prisms_demo_user");
+/**
+ * Offline mock data (fake sign-in and fake submissions) is OPT-IN only: set NEXT_PUBLIC_ENABLE_DEMO_MODE=true.
+ * By default a failing backend shows a real error instead of silently switching to fake data.
+ */
+export const OFFLINE_DEMO = process.env.NEXT_PUBLIC_ENABLE_DEMO_MODE === "true";
 export const DEV_DEFAULT_PASSWORD = DEMO_MODE ? "ChangeMe-Dev-123" : "";
 
 export class ApiError extends Error {
@@ -435,7 +443,9 @@ export const api = {
       return res;
     } catch (err) {
       // Fallback to high-fidelity demo authentication for testing/demonstration
-      const mock = DEMO_MODE ? findMockUser(email) : null;
+      // A rejected password (4xx) must surface; only fall back to demo data if the API is unreachable.
+      if (err instanceof ApiError && err.status < 500) throw err;
+      const mock = OFFLINE_DEMO ? findMockUser(email) : null;
       if (mock && typeof window !== "undefined") {
         localStorage.setItem("prisms_demo_user", JSON.stringify(mock));
         return { user: { id: mock.id, email: mock.collegeEmail, fullName: mock.fullName } };
@@ -471,7 +481,7 @@ export const api = {
       throw new Error("Invalid user profile");
     } catch (err) {
       if (typeof window !== "undefined") {
-        const stored = DEMO_MODE ? localStorage.getItem("prisms_demo_user") : null;
+        const stored = OFFLINE_DEMO ? localStorage.getItem("prisms_demo_user") : null;
         if (stored) {
           try {
             return JSON.parse(stored) as AuthUser;
@@ -514,8 +524,8 @@ export const api = {
             }
           : null,
       };
-    } catch {
-      // Resilient fallback so scholar never gets blocked by internal server error
+    } catch (err) {
+      if (!isDemoSession()) throw err;
       return {
         student: {
           id: "stu-1",
@@ -552,7 +562,8 @@ export const api = {
         method: "PUT",
         body: JSON.stringify(payload),
       });
-    } catch {
+    } catch (err) {
+      if (!isDemoSession()) throw err;
       return { success: true };
     }
   },
@@ -572,8 +583,8 @@ export const api = {
         fileSizeBytes: Number(f.fileSizeBytes) || file.size,
         sha256Checksum: f.sha256Checksum || "9b3c4f7a1e2d8b5c9a0f3e7d1c5a9b3c4f7a1e2d8b5c9a0f3e7d1c5a9b3c4f7a",
       };
-    } catch {
-      // Mock fallback so PDF upload always completes seamlessly
+    } catch (err) {
+      if (!isDemoSession()) throw err;
       return {
         fileScanId: "pdf-storage-" + Date.now(),
         originalFileName: file.name,
@@ -596,8 +607,9 @@ export const api = {
         method: "POST",
         body: JSON.stringify(payload),
       });
-    } catch {
-      // Return structured receipt for demo and save to in-memory mock lists
+    } catch (err) {
+      // Never pretend a real submission succeeded: only demo sessions get a mock receipt.
+      if (!isDemoSession()) throw err;
       const newSub: SubmissionItem = {
         id: "sub-" + Date.now(),
         submissionReference: "TH-2026-" + Math.floor(100 + Math.random() * 900),
@@ -822,7 +834,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       });
-    } catch {
+    } catch (err) {
+      if (!isDemoSession()) throw err;
       return { success: true, message: "Submission forwarded to HOD." };
     }
   },
@@ -836,7 +849,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       });
-    } catch {
+    } catch (err) {
+      if (!isDemoSession()) throw err;
       return { success: true, message: "Returned to scholar for revision." };
     }
   },
@@ -850,7 +864,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       });
-    } catch {
+    } catch (err) {
+      if (!isDemoSession()) throw err;
       return { success: true, message: "Submission rejected." };
     }
   },
