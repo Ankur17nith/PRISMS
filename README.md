@@ -120,8 +120,8 @@ PRISMS/
    ```ini
    PORT=4000
    FRONTEND_URL="http://localhost:3000"
-   DATABASE_URL="postgresql://prisms_app:<db_password>@localhost:5433/prisms?schema=public&host=/tmp"
-   DATABASE_URL_TEST="postgresql://prisms_app:<db_password>@localhost:5433/prisms_test?schema=public&host=/tmp"
+   DATABASE_URL="postgresql://prisms_app:<db_password>@localhost:5433/prisms?schema=public"
+   DATABASE_URL_TEST="postgresql://prisms_app:<db_password>@localhost:5433/prisms_test?schema=public"
    JWT_ACCESS_SECRET="<replace-with-a-secure-random-32-char-secret>"
    ACCESS_TOKEN_TTL_MINUTES=15
    REFRESH_TOKEN_TTL_DAYS=7
@@ -197,8 +197,9 @@ from the `SEED_PASSWORD` environment variable, or `ChangeMe-Dev-123` when it is 
 | **Chairperson Senate**| `chairman@example.test` | Director & Chairman Senate | Senate Final Approval Authority |
 | **Admin** | `admin@example.test` | Administrator | Institutional IT |
 
-> The frontend's demo conveniences (one-click demo accounts, pre-filled seed password, offline mock sign-in) are
-> enabled only in development builds. Production builds disable them unless `NEXT_PUBLIC_ENABLE_DEMO_MODE=true`.
+> One-click demo accounts and the pre-filled seed password appear only in development builds. Fake offline data (mock sign-in
+> and mock submissions) is off unless you set `NEXT_PUBLIC_ENABLE_DEMO_MODE=true`; otherwise a failing backend shows a real error.
+> If login fails with a 500, PostgreSQL is not reachable: start it (`docker compose up -d postgres`) and check `DATABASE_URL`.
 
 ---|:---|:---|:---|
 | **Scholar 1** | `aarav.sharma@example.test` | Aarav Sharma | PhD Scholar (`21PHDCSE01`) |
